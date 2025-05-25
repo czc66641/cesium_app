@@ -174,7 +174,7 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ['update-location'],
+  emits: ['update-location', 'earthquake-data-loaded'],
   setup(props, { emit }) {
     // 状态变量
     const dataLoaded = ref(false);
@@ -314,6 +314,10 @@ export default defineComponent({
         earthquakeData.value = processedData;
         filteredData.value = [...processedData];
         earthquakeStats.value = computeStats(processedData);
+        
+        // 发射数据加载事件，传递给父组件
+        emit('earthquake-data-loaded', processedData);
+        console.log('地震数据已加载，发射事件给父组件:', processedData.length, '条记录');
         
         // 设置默认筛选日期范围
         if (processedData.length > 0) {

@@ -12,10 +12,16 @@ const app = createApp(App);
 
 // 添加全局错误处理以便于调试
 app.config.errorHandler = (err, vm, info) => {
-  console.error('Vue错误:', err);
-  console.error('组件:', vm);
-  console.error('错误信息:', info);
+  console.error('Vue应用错误:', err);
+  console.error('组件信息:', info);
+  console.error('Vue实例:', vm);
 };
+
+// 添加全局未捕获的Promise错误处理
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('未处理的Promise错误:', event.reason);
+  event.preventDefault();
+});
 
 // 确保在挂载前设置Cesium基础配置
 window.CESIUM_BASE_URL = '/cesium/';
