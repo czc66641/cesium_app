@@ -17,11 +17,11 @@ app.config.errorHandler = (err, vm, info) => {
   console.error('错误信息:', info);
 };
 
+// 确保在挂载前设置Cesium基础配置
+window.CESIUM_BASE_URL = '/cesium/';
+
 // 挂载应用
 app.mount('#app');
-
-// 移除这行代码，因为它可能导致资源加载问题
-// Cesium.buildModuleUrl.setBaseUrl('./assets/cesium/');
 
 // 在控制台添加调试信息以确认应用正确加载
 console.log('应用已启动，Cesium 版本:', Cesium.VERSION);

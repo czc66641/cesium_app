@@ -78,6 +78,12 @@ export default defineComponent({
     LayerManager,
     NavBar
   },
+  props: {
+    selectedMap: {
+      type: String,
+      default: 'cesiumTerrain1'
+    }
+  },
   // 添加emits选项，声明组件可以触发的事件
   emits: ['update-location', 'update:selectedMap'],
   setup(props, { emit }) {
