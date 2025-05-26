@@ -229,10 +229,10 @@ export default defineComponent({
             break;
 
           case 'cesiumTerrain1':
+            // 修改：使用OpenStreetMap替代Google地图
             viewer.value.imageryLayers.addImageryProvider(
-              new Cesium.UrlTemplateImageryProvider({
-                url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                maximumLevel: 19,
+              new Cesium.OpenStreetMapImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/'
               })
             );
             viewer.value.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(3956);
@@ -296,10 +296,10 @@ export default defineComponent({
             break;
 
           default:
+            // 默认使用OpenStreetMap替代Google地图
             viewer.value.imageryLayers.addImageryProvider(
-              new Cesium.UrlTemplateImageryProvider({
-                url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                maximumLevel: 19,
+              new Cesium.OpenStreetMapImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/'
               })
             );
         }

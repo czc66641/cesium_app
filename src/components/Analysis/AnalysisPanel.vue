@@ -70,17 +70,21 @@
             </div>
           </div>
           
-          <div v-else-if="activeTab === 'environment'" class="coming-soon">
-            <i class="fas fa-leaf"></i>
-            <h3>环境分析</h3>
-            <p>功能开发中...</p>
-          </div>
+          <WindAnalysis
+            v-else-if="activeTab === 'wind'"
+            :viewer="viewer"
+            :current-location="currentLocation"
+            :preserve-data-on-close="true"
+            :keep-data-on-panel-close="true"
+          />
           
-          <div v-else-if="activeTab === 'population'" class="coming-soon">
-            <i class="fas fa-users"></i>
-            <h3>人口分析</h3>
-            <p>功能开发中...</p>
-          </div>
+          <SatelliteAnalysis
+            v-else-if="activeTab === 'satellite'"
+            :viewer="viewer"
+            :current-location="currentLocation"
+            :preserve-data-on-close="true"
+            :keep-data-on-panel-close="true"
+          />
         </div>
       </div>
       
@@ -100,12 +104,16 @@
 import { defineComponent, ref } from 'vue';
 import EarthquakeAnalysis from '../finalwork/earthquake.vue';
 import TyphoonAnalysis from './TyphoonAnalysis.vue';
+import WindAnalysis from './WindAnalysis.vue';
+import SatelliteAnalysis from './SatelliteAnalysis.vue'; // 新增卫星分析组件
 
 export default defineComponent({
   name: 'AnalysisPanel',
   components: {
     EarthquakeAnalysis,
-    TyphoonAnalysis
+    TyphoonAnalysis,
+    WindAnalysis,
+    SatelliteAnalysis // 注册卫星分析组件
   },
   props: {
     visible: {
@@ -129,8 +137,8 @@ export default defineComponent({
     const tabs = [
       { id: 'earthquake', name: '地震分析', icon: 'fas fa-mountain' },
       { id: 'weather', name: '气象分析', icon: 'fas fa-cloud-sun' },
-      { id: 'environment', name: '环境分析', icon: 'fas fa-leaf' },
-      { id: 'population', name: '人口分析', icon: 'fas fa-users' }
+      { id: 'wind', name: '风场分析', icon: 'fas fa-wind' },
+      { id: 'satellite', name: '卫星轨道', icon: 'fas fa-satellite' } // 替换人口分析
     ];
     
     const weatherOptions = ref({
@@ -143,12 +151,14 @@ export default defineComponent({
     const weatherTime = ref(12);
     
     const closePanel = () => {
-      // 只关闭面板，不清除任何数据
+      // 关闭面板但保留所有数据
+      console.log('关闭综合分析面板，保留所有数据');
       emit('close');
     };
     
     const handleOverlayClick = () => {
       // 点击遮罩层关闭面板但保留数据
+      console.log('点击遮罩层关闭面板，保留数据');
       closePanel();
     };
     

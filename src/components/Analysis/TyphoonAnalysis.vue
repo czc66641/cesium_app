@@ -1,91 +1,99 @@
 <template>
   <div class="typhoon-analysis">
+    <div class="section-title">
+      <i class="fas fa-hurricane"></i>
+      台风分析
+    </div>
+    
+    <!-- 控制面板 -->
     <div class="control-section">
-      <h3>台风路径分析</h3>
-      
-      <div class="input-group">
-        <button @click="loadTyphoonData" :disabled="isLoading" class="btn-primary full-width-btn">
+      <h4>台风数据控制</h4>
+      <div class="control-buttons">
+        <button 
+          @click="loadTyphoonData" 
+          :disabled="isLoading"
+          class="btn-primary"
+        >
+          <i class="fas fa-download"></i>
           {{ isLoading ? '加载中...' : '加载台风数据' }}
         </button>
+        <button 
+          @click="clearTyphoon" 
+          :disabled="!typhoonLoaded"
+          class="btn-danger"
+        >
+          <i class="fas fa-trash"></i>
+          清除台风
+        </button>
       </div>
-
-      <div v-if="typhoonLoaded" class="animation-controls">
-        <h4>动画控制</h4>
-        
-        <div class="control-row">
-          <label>显示选项:</label>
-          <div class="checkbox-group">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="showPath" @change="togglePathDisplay"> 
-              显示路径
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="showWarningLines" @change="toggleWarningLines"> 
-              显示警戒线
-            </label>
-          </div>
-        </div>
-
-        <div class="control-row">
-          <button @click="startAutoPlay" :disabled="isPlaying" class="btn-primary">
-            开始动画
-          </button>
-          <button @click="pauseAnimation" :disabled="!isPlaying" class="btn-secondary">
-            暂停
-          </button>
-          <button @click="stopAnimation" class="btn-secondary">
-            停止
-          </button>
-        </div>
-
-        <div class="control-row">
-          <label>动画速度: {{ animationSpeed }}x</label>
-          <input 
-            type="range" 
-            min="0.5" 
-            max="5" 
-            step="0.5" 
-            v-model="animationSpeed"
-            @input="updateAnimationSpeed"
-            class="speed-slider"
-          />
-        </div>
-
-        <div class="control-row">
-          <label>时间进度: {{ currentTimeIndex + 1 }} / {{ typhoonData ? typhoonData.length : 0 }}</label>
-          <input 
-            type="range" 
-            :min="0" 
-            :max="typhoonData ? typhoonData.length - 1 : 0" 
-            v-model="currentTimeIndex"
-            @input="seekToTime"
-            class="time-slider"
-          />
-        </div>
-
-        <div v-if="currentPoint" class="current-info">
-          <h5>当前状态</h5>
-          <p><strong>时间:</strong> {{ currentPoint.time }}</p>
-          <p><strong>位置:</strong> {{ currentPoint.lng }}, {{ currentPoint.lat }}</p>
-          <p><strong>强度:</strong> <span :class="getStrengthClass(currentPoint.strong)">{{ currentPoint.strong }}</span></p>
-          <p v-if="currentPoint.speed"><strong>移动速度:</strong> {{ currentPoint.speed }} km/h</p>
-          <p v-if="currentPoint.pressure"><strong>中心气压:</strong> {{ currentPoint.pressure }} hPa</p>
-        </div>
-      </div>
-
-      <button @click="clearTyphoon" class="btn-danger full-width">
-        清除台风数据
-      </button>
     </div>
-
-    <div v-if="statusMessage" class="status-message">
-      {{ statusMessage }}
+    
+    <!-- 台风显示控制 -->
+    <div class="control-section" v-if="typhoonLoaded">
+      <h4>显示控制</h4>
+      <div class="control-group">
+        <label class="control-option">
+          <input type="checkbox" v-model="showOptions.warningLines" @change="toggleWarningLines">
+          <span>显示警戒线</span>
+        </label>
+        <label class="control-option">
+          <input type="checkbox" v-model="showOptions.typhoonPath" @change="toggleTyphoonPath">
+          <span>显示台风路径</span>
+        </label>
+        <label class="control-option">
+          <input type="checkbox" v-model="showOptions.forecast" @change="toggleForecast">
+          <span>显示预测路径</span>
+        </label>
+        <label class="control-option">
+          <input type="checkbox" v-model="showOptions.typhoonEye" @change="toggleTyphoonEye">
+          <span>显示台风眼动画</span>
+        </label>
+        <label class="control-option">
+          <input type="checkbox" v-model="showOptions.windCircles" @change="toggleWindCircles">
+          <span>显示风圈</span>
+        </label>
+      </div>
+    </div>
+    
+    <!-- 台风强度图例 -->
+    <div class="typhoon-legend" v-if="typhoonLoaded">
+      <h4>台风强度等级</h4>
+      <div class="legend-items">
+        <div class="legend-item">
+          <span class="legend-color" style="background: green;"></span>
+          <span>热带低压</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: blue;"></span>
+          <span>热带风暴</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: yellow;"></span>
+          <span>强热带风暴</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: #FBC712;"></span>
+          <span>台风</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: red;"></span>
+          <span>超强台风</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 状态信息 -->
+    <div class="status-info" v-if="statusMessage">
+      <div :class="['status-message', statusType]">
+        <i :class="statusIcon"></i>
+        {{ statusMessage }}
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { defineComponent, ref, reactive, computed, onBeforeUnmount } from 'vue';
 import * as Cesium from 'cesium';
 
 export default defineComponent({
@@ -101,565 +109,737 @@ export default defineComponent({
     },
     preserveDataOnClose: {
       type: Boolean,
-      default: false
-    },
-    keepDataOnPanelClose: {
-      type: Boolean,
-      default: false
+      default: true
     }
   },
   setup(props) {
-    // 状态变量
+    // 基础状态
     const isLoading = ref(false);
     const typhoonLoaded = ref(false);
-    const typhoonData = ref(null);
     const statusMessage = ref('');
+    const statusType = ref('info');
     
-    // 显示控制
-    const showPath = ref(true);
-    const showWarningLines = ref(true);
-    
-    // 动画控制
-    const isPlaying = ref(false);
-    const animationSpeed = ref(1);
-    const currentTimeIndex = ref(0);
-    
-    // 实体管理
-    const typhoonEntities = ref({
-      dataSource: null,
-      pathEntity: null,
-      warningLines: [],
-      currentMarker: null
+    // 显示选项
+    const showOptions = reactive({
+      warningLines: true,
+      typhoonPath: true,
+      forecast: true,
+      typhoonEye: true,
+      windCircles: true
     });
     
-    let currentMarkerEntity = null;
-    let animationTimer = null;
+    // 台风数据存储
+    let myEntityCollection = null;
+    let typhoonInterval = null;
+    let tbentity = null;
+    let typhoonModel = null; // 添加3D模型引用
+    let fengquanLayers = [];
+    let iii = 0;
+    let currentPointObj = null;
+    let typhoonPoints = [];
     
-    // 当前点信息
-    const currentPoint = computed(() => {
-      if (!typhoonData.value || !Array.isArray(typhoonData.value)) return null;
-      return typhoonData.value[currentTimeIndex.value];
+    // 状态图标
+    const statusIcon = computed(() => {
+      switch (statusType.value) {
+        case 'success': return 'fas fa-check-circle';
+        case 'error': return 'fas fa-exclamation-circle';
+        case 'warning': return 'fas fa-exclamation-triangle';
+        default: return 'fas fa-info-circle';
+      }
     });
+    
+    // 设置状态信息
+    const setStatus = (message, type = 'info', duration = 3000) => {
+      statusMessage.value = message;
+      statusType.value = type;
+      
+      if (duration > 0) {
+        setTimeout(() => {
+          if (statusMessage.value === message) {
+            statusMessage.value = '';
+          }
+        }, duration);
+      }
+    };
+    
+    // 初始化警戒线
+    const initWarningLines = () => {
+      if (!showOptions.warningLines) return;
+      
+      // 24小时警戒线
+      props.viewer.entities.add({
+        name: '24小时警戒线',
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray([
+            127, 34, 127, 22, 119, 18, 119, 11, 113, 4.5, 105, 0
+          ]),
+          width: 2,
+          material: Cesium.Color.RED,
+          clampToGround: true,
+        }
+      });
 
-    // 加载台风数据 - 修改为读取正确的文件路径
+      // 48小时警戒线
+      props.viewer.entities.add({
+        name: '48小时警戒线',
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray([
+            132, 34, 132, 22, 119, 0, 105, 0
+          ]),
+          width: 2,
+          material: Cesium.Color.YELLOW,
+          clampToGround: true,
+        }
+      });
+
+      // 警戒线标签
+      props.viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(126.129019, 29.104287),
+        label: {
+          fillColor: Cesium.Color.RED,
+          text: '24小时警戒线',
+          font: '14pt monospace',
+        }
+      });
+
+      props.viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(132, 20),
+        label: {
+          fillColor: Cesium.Color.YELLOW,
+          text: '48小时警戒线',
+          font: '14pt monospace',
+        }
+      });
+    };
+    
+    // 获取台风强度对应颜色
+    const getTyphoonColor = (strong) => {
+      switch (strong) {
+        case "热带低压": return Cesium.Color.GREEN;
+        case "热带风暴": return Cesium.Color.BLUE;
+        case "强热带风暴": return Cesium.Color.YELLOW;
+        case "台风": return Cesium.Color.fromCssColorString("#FBC712");
+        case "强台风": return Cesium.Color.PLUM;
+        case "超强台风": return Cesium.Color.RED;
+        default: return Cesium.Color.RED;
+      }
+    };
+    
+    // 加载台风数据
     const loadTyphoonData = async () => {
       if (!props.viewer) {
-        statusMessage.value = 'Viewer未初始化';
+        setStatus('Viewer未初始化', 'error');
         return;
       }
-
+      
+      isLoading.value = true;
+      setStatus('正在加载台风数据...', 'info', 0);
+      
       try {
-        isLoading.value = true;
-        statusMessage.value = '正在加载台风数据...';
+        // 飞行到台风区域
+        props.viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(120, 20, 4025692.0)
+        });
         
-        // 清除现有数据
-        clearTyphoon();
-        
-        // 读取typhoon.json文件
-        const response = await fetch('/typhoon.json');
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // 初始化警戒线
+        if (showOptions.warningLines) {
+          initWarningLines();
         }
         
-        const data = await response.json();
-        console.log('原始台风数据:', data);
+        // 创建台风数据集合
+        myEntityCollection = new Cesium.CustomDataSource("typhoonCollection");
+        props.viewer.dataSources.add(myEntityCollection);
         
-        // 处理数据格式 - 根据实际数据结构调整
-        if (data && data.points && Array.isArray(data.points)) {
-          typhoonData.value = data.points;
-        } else if (Array.isArray(data)) {
-          typhoonData.value = data;
-        } else {
-          throw new Error('无法识别的数据格式');
+        // 修复：使用正确的台风数据路径
+        let data = null;
+        const possiblePaths = [
+          '/typhoon.json',
+          './typhoon.json',
+          'typhoon.json'
+        ];
+        
+        for (const path of possiblePaths) {
+          try {
+            console.log(`尝试加载台风数据: ${path}`);
+            const response = await fetch(path);
+            
+            if (response.ok) {
+              try {
+                data = await response.json();
+                console.log(`台风数据加载成功: ${path}`, data);
+                break;
+              } catch (parseError) {
+                console.warn(`${path} JSON解析失败:`, parseError.message);
+              }
+            } else {
+              console.warn(`${path} 请求失败，状态码: ${response.status}`);
+            }
+          } catch (err) {
+            console.warn(`无法从 ${path} 加载数据:`, err.message);
+          }
         }
         
-        console.log('台风数据加载成功:', typhoonData.value.length, '个数据点');
+        // 如果所有路径都失败，使用模拟数据
+        if (!data) {
+          console.warn('无法加载台风数据文件，使用模拟数据');
+          data = generateMockTyphoonData();
+        }
         
-        // 初始化台风可视化
-        await initializeTyphoonVisualization();
+        typhoonPoints = data.points || data;
+        
+        if (!typhoonPoints || typhoonPoints.length === 0) {
+          throw new Error('台风数据为空或格式错误');
+        }
+        
+        console.log(`加载了 ${typhoonPoints.length} 个台风数据点`);
+        
+        // 绘制台风路径和历史点
+        if (showOptions.typhoonPath) {
+          drawTyphoonPath(typhoonPoints);
+        }
+        
+        // 绘制预测路径
+        if (showOptions.forecast && typhoonPoints.length > 0) {
+          drawForecastPath(typhoonPoints[typhoonPoints.length - 1]);
+        }
+        
+        // 启动台风眼动画（优先使用3D模型）
+        if (showOptions.typhoonEye) {
+          await initTyphoonEye();
+          startTyphoonAnimation(typhoonPoints);
+        }
         
         typhoonLoaded.value = true;
-        statusMessage.value = `台风数据加载成功，共${typhoonData.value.length}个数据点`;
-        
-        setTimeout(() => {
-          statusMessage.value = '';
-        }, 3000);
+        setStatus('台风数据加载完成', 'success');
         
       } catch (error) {
         console.error('加载台风数据失败:', error);
-        statusMessage.value = `加载失败: ${error.message}`;
+        setStatus(`加载失败: ${error.message}`, 'error');
         
-        // 使用示例数据作为备选
-        console.log('使用示例数据');
-        typhoonData.value = getExampleTyphoonData();
-        
-        try {
-          await initializeTyphoonVisualization();
-          typhoonLoaded.value = true;
-          statusMessage.value = '使用示例台风数据';
-        } catch (initError) {
-          console.error('初始化示例数据失败:', initError);
-          statusMessage.value = '初始化失败';
+        // 如果加载失败，清理已创建的数据
+        if (myEntityCollection) {
+          props.viewer.dataSources.remove(myEntityCollection);
+          myEntityCollection = null;
         }
       } finally {
         isLoading.value = false;
       }
     };
-
-    // 获取示例台风数据 - 基于第一个文件的数据结构
-    const getExampleTyphoonData = () => {
-      return [
-        { time: '2023-07-01 00:00', lng: 125.5, lat: 15.2, strong: '热带低压', pressure: 1008, speed: 15, name: '台风示例' },
-        { time: '2023-07-01 06:00', lng: 126.1, lat: 16.8, strong: '热带风暴', pressure: 1002, speed: 18, name: '台风示例' },
-        { time: '2023-07-01 12:00', lng: 126.8, lat: 18.5, strong: '强热带风暴', pressure: 995, speed: 22, name: '台风示例' },
-        { time: '2023-07-01 18:00', lng: 127.2, lat: 20.1, strong: '台风', pressure: 985, speed: 25, name: '台风示例' },
-        { time: '2023-07-02 00:00', lng: 127.8, lat: 21.8, strong: '强台风', pressure: 975, speed: 28, name: '台风示例' },
-        { time: '2023-07-02 06:00', lng: 128.1, lat: 23.2, strong: '超强台风', pressure: 960, speed: 32, name: '台风示例' },
-        { time: '2023-07-02 12:00', lng: 128.5, lat: 24.8, strong: '超强台风', pressure: 955, speed: 35, name: '台风示例' },
-        { time: '2023-07-02 18:00', lng: 128.8, lat: 26.5, strong: '台风', pressure: 970, speed: 30, name: '台风示例' },
-        { time: '2023-07-03 00:00', lng: 129.2, lat: 28.1, strong: '强热带风暴', pressure: 980, speed: 25, name: '台风示例' },
-        { time: '2023-07-03 06:00', lng: 129.5, lat: 29.8, strong: '热带风暴', pressure: 990, speed: 20, name: '台风示例' }
-      ];
-    };
-
-    // 初始化台风可视化
-    const initializeTyphoonVisualization = async () => {
-      if (!props.viewer || !typhoonData.value) {
-        throw new Error('Viewer或台风数据未初始化');
-      }
+    
+    // 绘制台风路径
+    const drawTyphoonPath = (points) => {
+      const lineArr = [];
       
-      try {
-        // 创建数据源
-        typhoonEntities.value.dataSource = new Cesium.CustomDataSource('typhoon');
-        props.viewer.dataSources.add(typhoonEntities.value.dataSource);
+      points.forEach(element => {
+        const color = getTyphoonColor(element.strong);
+        lineArr.push(Number(element.lng));
+        lineArr.push(Number(element.lat));
         
-        // 创建警戒线
-        if (showWarningLines.value) {
-          createWarningLines();
-        }
-        
-        // 创建台风路径
-        if (showPath.value) {
-          createTyphoonPath();
-        }
-        
-        // 创建当前位置标记
-        if (typhoonData.value && typhoonData.value.length > 0) {
-          createCurrentMarker(typhoonData.value[0]);
-        }
-        
-        // 飞行到台风区域
-        flyToTyphoonArea();
-        
-      } catch (error) {
-        console.error('初始化台风可视化失败:', error);
-        throw error;
-      }
-    };
-
-    // 创建警戒线
-    const createWarningLines = () => {
-      try {
-        // 24小时警戒线
-        const line24 = typhoonEntities.value.dataSource.entities.add({
-          id: 'warning_line_24',
-          polyline: {
-            positions: Cesium.Cartesian3.fromDegreesArray([
-              127, 34, 127, 22, 119, 18, 119, 11, 113, 4.5, 105, 0
-            ]),
-            width: 3,
-            material: Cesium.Color.RED,
-            clampToGround: true
+        // 添加台风点
+        const entity = new Cesium.Entity({
+          position: Cesium.Cartesian3.fromDegrees(Number(element.lng), Number(element.lat)),
+          point: {
+            pixelSize: 5,
+            color: color
           },
-          label: {
-            text: '24小时警戒线',
-            font: '14pt sans-serif',
-            fillColor: Cesium.Color.RED,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -30),
-            position: Cesium.Cartesian3.fromDegrees(126, 29)
-          }
         });
-
-        // 48小时警戒线
-        const line48 = typhoonEntities.value.dataSource.entities.add({
-          id: 'warning_line_48',
-          polyline: {
-            positions: Cesium.Cartesian3.fromDegreesArray([
-              132, 34, 132, 22, 119, 0, 105, 0
-            ]),
-            width: 3,
-            material: Cesium.Color.YELLOW,
-            clampToGround: true
-          },
-          label: {
-            text: '48小时警戒线',
-            font: '14pt sans-serif',
-            fillColor: Cesium.Color.YELLOW,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -30),
-            position: Cesium.Cartesian3.fromDegrees(132, 20)
-          }
-        });
-
-        typhoonEntities.value.warningLines = [line24, line48];
-      } catch (error) {
-        console.error('创建警戒线失败:', error);
-      }
-    };
-
-    // 创建台风路径
-    const createTyphoonPath = () => {
-      try {
-        const positions = [];
         
-        typhoonData.value.forEach(point => {
-          const lng = parseFloat(point.lng);
-          const lat = parseFloat(point.lat);
-          
-          if (!isNaN(lng) && !isNaN(lat)) {
-            positions.push(lng, lat);
-            
-            // 为每个点添加标记
-            const color = getTyphoonColor(point.strong);
-            typhoonEntities.value.dataSource.entities.add({
-              position: Cesium.Cartesian3.fromDegrees(lng, lat, 0),
-              point: {
-                pixelSize: 6,
-                color: color,
-                outlineColor: Cesium.Color.WHITE,
-                outlineWidth: 1,
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-              }
-            });
-          }
-        });
-
-        // 创建路径线
-        if (positions.length > 0) {
-          typhoonEntities.value.pathEntity = typhoonEntities.value.dataSource.entities.add({
-            id: 'typhoon_path',
-            polyline: {
-              positions: Cesium.Cartesian3.fromDegreesArray(positions),
-              width: 4,
-              material: Cesium.Color.RED.withAlpha(0.8),
-              clampToGround: true
-            }
-          });
-        }
-      } catch (error) {
-        console.error('创建台风路径失败:', error);
-      }
-    };
-
-    // 创建当前位置标记 - 使用台风模型
-    const createCurrentMarker = (point) => {
-      try {
-        if (!props.viewer || !point) return;
-        
-        const lng = parseFloat(point.lng);
-        const lat = parseFloat(point.lat);
-        
-        if (isNaN(lng) || isNaN(lat)) return;
-        
-        // 移除现有标记
-        if (currentMarkerEntity) {
-          try {
-            typhoonEntities.value.dataSource.entities.remove(currentMarkerEntity);
-          } catch (e) {
-            console.warn('移除当前标记失败:', e);
-          }
-        }
-        
-        // 使用台风模型文件
-        currentMarkerEntity = typhoonEntities.value.dataSource.entities.add({
-          id: `current_marker_${Date.now()}`,
-          position: Cesium.Cartesian3.fromDegrees(lng, lat, 0),
-          model: {
-            uri: '/data/harricane_typhoon_weather_map.glb',
-            scale: getScaleByStrength(point.strong),
-            minimumPixelSize: 100,
-            maximumScale: 100000,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            runAnimations: true,
-            silhouetteColor: Cesium.Color.YELLOW,
-            silhouetteSize: 2.0
-          },
-          label: {
-            text: `${point.name || '台风'}\n${point.strong}\n${point.time}`,
-            font: '14px sans-serif',
-            fillColor: Cesium.Color.WHITE,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            outlineWidth: 2,
-            outlineColor: Cesium.Color.BLACK,
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, -80),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            backgroundColor: Cesium.Color.BLACK.withAlpha(0.7),
-            backgroundPadding: new Cesium.Cartesian2(10, 5),
-            showBackground: true
-          }
-        });
-
-        // 添加简单的台风眼效果
-        if (window.typhoonVisualEnhancer) {
-          const position = Cesium.Cartesian3.fromDegrees(lng, lat, 0);
-          window.typhoonVisualEnhancer.createTyphoonEye(props.viewer, position, getStrengthLevel(point.strong));
-        }
-      } catch (error) {
-        console.error('创建当前台风标记失败:', error);
-      }
-    };
-
-    // 根据台风强度获取模型缩放
-    const getScaleByStrength = (strength) => {
-      switch (strength) {
-        case '热带低压': return 5000.0;
-        case '热带风暴': return 8000.0;
-        case '强热带风暴': return 12000.0;
-        case '台风': return 15000.0;
-        case '强台风': return 20000.0;
-        case '超强台风': return 25000.0;
-        default: return 10000.0;
-      }
-    };
-
-    // 获取台风颜色
-    const getTyphoonColor = (strength) => {
-      switch (strength) {
-        case '热带低压': return Cesium.Color.GREEN;
-        case '热带风暴': return Cesium.Color.BLUE;
-        case '强热带风暴': return Cesium.Color.YELLOW;
-        case '台风': return Cesium.Color.fromCssColorString('#FBC712');
-        case '强台风': return Cesium.Color.PLUM;
-        case '超强台风': return Cesium.Color.RED;
-        default: return Cesium.Color.WHITE;
-      }
-    };
-
-    // 创建台风图标
-    const createTyphoonIcon = (strength) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 48;
-      canvas.height = 48;
-      const ctx = canvas.getContext('2d');
-      
-      // 获取颜色
-      const color = getTyphoonColor(strength);
-      ctx.fillStyle = color.toCssColorString();
-      
-      // 绘制螺旋形状
-      ctx.beginPath();
-      ctx.arc(24, 24, 20, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      // 添加中心眼
-      ctx.fillStyle = 'black';
-      ctx.beginPath();
-      ctx.arc(24, 24, 6, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      return canvas.toDataURL();
-    };
-
-    // 获取强度等级
-    const getStrengthLevel = (strength) => {
-      const levels = {
-        '热带低压': 1,
-        '热带风暴': 2,
-        '强热带风暴': 3,
-        '台风': 4,
-        '强台风': 5,
-        '超强台风': 6
-      };
-      return levels[strength] || 1;
-    };
-
-    // 获取强度样式类
-    const getStrengthClass = (strength) => {
-      return `strength-${getStrengthLevel(strength)}`;
-    };
-
-    // 飞行到台风区域
-    const flyToTyphoonArea = () => {
-      if (!props.viewer || !typhoonData.value.length) return;
-      
-      // 计算台风路径的中心点
-      let sumLng = 0, sumLat = 0, count = 0;
-      
-      typhoonData.value.forEach(point => {
-        const lng = parseFloat(point.lng);
-        const lat = parseFloat(point.lat);
-        if (!isNaN(lng) && !isNaN(lat)) {
-          sumLng += lng;
-          sumLat += lat;
-          count++;
-        }
+        myEntityCollection.entities.add(entity);
       });
       
-      if (count > 0) {
-        const centerLng = sumLng / count;
-        const centerLat = sumLat / count;
-        
-        props.viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(centerLng, centerLat, 2000000),
-          duration: 2.0
-        });
-      }
+      // 添加台风路径线
+      props.viewer.entities.add({
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray(lineArr),
+          width: 3,
+          clampToGround: true,
+          material: Cesium.Color.RED,
+        }
+      });
     };
-
-    // 动画控制函数
-    const startAutoPlay = () => {
-      if (isPlaying.value || !typhoonData.value) return;
+    
+    // 添加：生成模拟台风数据
+    const generateMockTyphoonData = () => {
+      console.log('生成模拟台风数据...');
       
-      isPlaying.value = true;
+      const mockPoints = [];
+      const startLon = 135;
+      const startLat = 15;
+      const pointCount = 100;
       
-      const animate = () => {
-        if (!isPlaying.value) return;
+      // 台风强度等级
+      const intensityLevels = ["热带低压", "热带风暴", "强热带风暴", "台风", "强台风", "超强台风"];
+      
+      for (let i = 0; i < pointCount; i++) {
+        const progress = i / pointCount;
         
-        if (currentTimeIndex.value >= typhoonData.value.length - 1) {
-          currentTimeIndex.value = 0;
-        } else {
-          currentTimeIndex.value++;
+        // 模拟台风路径：从东南向西北移动，带有一些弯曲
+        const lon = startLon - progress * 20 + Math.sin(progress * Math.PI * 2) * 3;
+        const lat = startLat + progress * 15 + Math.cos(progress * Math.PI * 3) * 2;
+        
+        // 随机强度
+        const intensityIndex = Math.floor(Math.random() * intensityLevels.length);
+        const strong = intensityLevels[intensityIndex];
+        
+        // 模拟风速和气压
+        const windSpeed = 30 + Math.random() * 100;
+        const pressure = 900 + Math.random() * 100;
+        
+        const point = {
+          lng: lon.toFixed(6),
+          lat: lat.toFixed(6),
+          strong: strong,
+          speed: windSpeed.toFixed(1),
+          pressure: pressure.toFixed(1),
+          time: new Date(Date.now() - (pointCount - i) * 3600000).toISOString(), // 每小时一个点
+        };
+        
+        // 为最后一个点添加预测数据
+        if (i === pointCount - 1) {
+          point.forecast = [
+            {
+              name: "中央气象台",
+              forecastpoints: [
+                { lng: (lon - 2).toFixed(6), lat: (lat + 2).toFixed(6), time: "12小时后" },
+                { lng: (lon - 4).toFixed(6), lat: (lat + 4).toFixed(6), time: "24小时后" },
+                { lng: (lon - 6).toFixed(6), lat: (lat + 6).toFixed(6), time: "48小时后" },
+              ]
+            },
+            {
+              name: "日本气象厅",
+              forecastpoints: [
+                { lng: (lon - 1.8).toFixed(6), lat: (lat + 2.2).toFixed(6), time: "12小时后" },
+                { lng: (lon - 3.8).toFixed(6), lat: (lat + 4.2).toFixed(6), time: "24小时后" },
+                { lng: (lon - 5.8).toFixed(6), lat: (lat + 6.2).toFixed(6), time: "48小时后" },
+              ]
+            }
+          ];
         }
         
-        updateCurrentMarker();
-        
-        const interval = 1000 / animationSpeed.value;
-        animationTimer = setTimeout(animate, interval);
-      };
+        mockPoints.push(point);
+      }
       
-      animate();
+      return { points: mockPoints };
     };
-
-    const pauseAnimation = () => {
-      isPlaying.value = false;
-      if (animationTimer) {
-        clearTimeout(animationTimer);
-        animationTimer = null;
-      }
-    };
-
-    const stopAnimation = () => {
-      pauseAnimation();
-      currentTimeIndex.value = 0;
-      updateCurrentMarker();
-    };
-
-    const updateAnimationSpeed = () => {
-      if (isPlaying.value) {
-        pauseAnimation();
-        startAutoPlay();
-      }
-    };
-
-    const seekToTime = () => {
-      updateCurrentMarker();
-    };
-
-    const updateCurrentMarker = () => {
-      if (currentPoint.value) {
-        createCurrentMarker(currentPoint.value);
-      }
-    };
-
-    const togglePathDisplay = () => {
-      if (!typhoonEntities.value.dataSource) return;
-      
-      if (showPath.value) {
-        createTyphoonPath();
-      } else if (typhoonEntities.value.pathEntity) {
-        typhoonEntities.value.dataSource.entities.remove(typhoonEntities.value.pathEntity);
-        typhoonEntities.value.pathEntity = null;
-      }
-    };
-
-    const toggleWarningLines = () => {
-      if (!typhoonEntities.value.dataSource) return;
-      
-      if (showWarningLines.value) {
-        createWarningLines();
-      } else {
-        typhoonEntities.value.warningLines.forEach(line => {
-          typhoonEntities.value.dataSource.entities.remove(line);
-        });
-        typhoonEntities.value.warningLines = [];
-      }
-    };
-
-    // 修改清除台风函数
-    const clearTyphoon = (forceClean = false) => {
-      // 如果设置了保留数据且不是强制清除，则不清除
-      if (props.keepDataOnPanelClose && !forceClean) {
-        console.log('保留台风数据和显示效果');
+    
+    // 修复：绘制预测路径
+    const drawForecastPath = (lastPoint) => {
+      if (!lastPoint.forecast) {
+        console.warn('最后一个台风点没有预测数据');
         return;
       }
       
-      try {
-        // 停止动画
-        pauseAnimation();
-        
-        // 移除数据源
-        if (typhoonEntities.value.dataSource && props.viewer) {
-          props.viewer.dataSources.remove(typhoonEntities.value.dataSource);
+      const forecast = lastPoint.forecast;
+      const colorArr = [
+        Cesium.Color.fromCssColorString("#2D12FB"),
+        Cesium.Color.fromCssColorString("#15E5E7"),
+        Cesium.Color.fromCssColorString("#15E74A"),
+        Cesium.Color.fromCssColorString("#E76F15"),
+        Cesium.Color.fromCssColorString("#15D9E7"),
+      ];
+      
+      forecast.forEach((ele, ii) => {
+        if (!ele.forecastpoints || ele.forecastpoints.length === 0) {
+          return;
         }
         
-        // 重置状态
-        typhoonEntities.value = {
-          dataSource: null,
-          pathEntity: null,
-          warningLines: [],
-          currentMarker: null
-        };
+        const lineArr = [];
         
-        currentMarkerEntity = null;
-        typhoonLoaded.value = false;
-        typhoonData.value = null;
+        // 添加起点（当前台风位置）
+        lineArr.push(Number(lastPoint.lng));
+        lineArr.push(Number(lastPoint.lat));
         
-        statusMessage.value = '台风数据已清除';
-        setTimeout(() => {
-          if (statusMessage.value === '台风数据已清除') {
-            statusMessage.value = '';
+        ele.forecastpoints.forEach((e) => {
+          lineArr.push(Number(e.lng));
+          lineArr.push(Number(e.lat));
+          
+          // 添加预测点
+          const entity = new Cesium.Entity({
+            position: Cesium.Cartesian3.fromDegrees(Number(e.lng), Number(e.lat)),
+            point: {
+              pixelSize: 8,
+              color: colorArr[ii % colorArr.length],
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2
+            },
+            label: {
+              text: e.time || `预测点${ii + 1}`,
+              font: '12pt monospace',
+              fillColor: colorArr[ii % colorArr.length],
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2,
+              pixelOffset: new Cesium.Cartesian2(0, -30),
+              showBackground: true,
+              backgroundColor: Cesium.Color.BLACK.withAlpha(0.7)
+            }
+          });
+          myEntityCollection.entities.add(entity);
+        });
+        
+        // 添加预测路径线
+        if (lineArr.length >= 4) { // 至少需要两个点
+          const entity = props.viewer.entities.add({
+            name: `预测路径-${ele.name || '机构' + (ii + 1)}`,
+            polyline: {
+              positions: Cesium.Cartesian3.fromDegreesArray(lineArr),
+              width: 3,
+              clampToGround: true,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: colorArr[ii % colorArr.length],
+                dashLength: 16
+              }),
+            }
+          });
+          myEntityCollection.entities.add(entity);
+        }
+      });
+    };
+    
+    // 修复：初始化台风眼（优先使用3D模型）
+    const initTyphoonEye = async () => {
+      try {
+        // 首先尝试加载3D模型
+        console.log('尝试加载台风3D模型...');
+        
+        const modelPaths = [
+          '/data/harricane_typhoon_weather_map.glb',
+          './data/harricane_typhoon_weather_map.glb',
+          'data/harricane_typhoon_weather_map.glb'
+        ];
+        
+        let modelLoaded = false;
+        
+        for (const modelPath of modelPaths) {
+          try {
+            console.log(`尝试加载模型: ${modelPath}`);
+            
+            // 测试模型文件是否存在
+            const response = await fetch(modelPath, { method: 'HEAD' });
+            if (response.ok) {
+              // 创建3D模型实体
+              typhoonModel = props.viewer.entities.add({
+                name: '台风3D模型',
+                position: Cesium.Cartesian3.fromDegrees(120, 20, 10000),
+                model: {
+                  uri: modelPath,
+                  minimumPixelSize: 64,
+                  maximumScale: 50000,
+                  scale: 1000,
+                  show: true,
+                  heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+                }
+              });
+              
+              console.log('台风3D模型加载成功');
+              modelLoaded = true;
+              break;
+            }
+          } catch (modelError) {
+            console.warn(`模型 ${modelPath} 加载失败:`, modelError.message);
           }
-        }, 2000);
+        }
+        
+        // 如果3D模型加载失败，使用GIF动画作为备用
+        if (!modelLoaded) {
+          console.log('3D模型加载失败，使用GIF动画作为备用');
+          
+          return new Promise((resolve) => {
+            const div = document.createElement("div");
+            const img = document.createElement("img");
+            div.appendChild(img);
+            
+            // 尝试多个可能的图片路径
+            const imagePaths = [
+              '/images/tf.gif',
+              './images/tf.gif',
+              'images/tf.gif',
+              '/data/tf.gif'
+            ];
+            
+            let imageIndex = 0;
+            
+            const tryNextImage = () => {
+              if (imageIndex < imagePaths.length) {
+                img.src = imagePaths[imageIndex];
+                imageIndex++;
+              } else {
+                // 所有图片路径都失败，使用简单的圆形标记
+                console.warn('台风图片加载失败，使用简单标记');
+                tbentity = props.viewer.entities.add({
+                  position: Cesium.Cartesian3.fromDegrees(120, 20, 1000),
+                  ellipse: {
+                    semiMinorAxis: 50000,
+                    semiMajorAxis: 50000,
+                    material: Cesium.Color.RED.withAlpha(0.5),
+                    outline: true,
+                    outlineColor: Cesium.Color.RED
+                  }
+                });
+                resolve(tbentity);
+              }
+            };
+            
+            img.onload = () => {
+              tbentity = props.viewer.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(120, 20, 1000),
+                billboard: {
+                  image: img.src,
+                  scale: 0.1,
+                  heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
+                },
+              });
+              resolve(tbentity);
+            };
+            
+            img.onerror = () => {
+              console.warn(`台风图片加载失败: ${img.src}`);
+              tryNextImage();
+            };
+            
+            tryNextImage();
+          });
+        }
+        
+        return typhoonModel || tbentity;
+        
       } catch (error) {
-        console.error('清除台风数据失败:', error);
+        console.error('台风眼初始化失败:', error);
+        
+        // 最后的备用方案：简单的圆形标记
+        tbentity = props.viewer.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(120, 20, 1000),
+          ellipse: {
+            semiMinorAxis: 50000,
+            semiMajorAxis: 50000,
+            material: Cesium.Color.RED.withAlpha(0.5),
+            outline: true,
+            outlineColor: Cesium.Color.RED
+          }
+        });
+        
+        return tbentity;
       }
     };
-
-    // 组件卸载时清理
+    
+    // 修复：启动台风动画（支持3D模型）
+    const startTyphoonAnimation = (data) => {
+      typhoonInterval = setInterval(() => {
+        const kkk = iii * 2;
+        currentPointObj = {
+          lon: Number(data[iii].lng),
+          lat: Number(data[iii].lat),
+          circle7: {
+            radius1: 350 - kkk,
+            radius2: 450 - kkk,
+            radius3: 400 - kkk,
+            radius4: 350 - kkk,
+          },
+          circle10: {
+            radius1: 250 - kkk,
+            radius2: 270 - kkk,
+            radius3: 250 - kkk,
+            radius4: 220 - kkk,
+          },
+          circle12: {
+            radius1: 170 - kkk,
+            radius2: 150 - kkk,
+            radius3: 150 - kkk,
+            radius4: 170 - kkk,
+          }
+        };
+        
+        const newPosition = Cesium.Cartesian3.fromDegrees(
+          Number(data[iii].lng), 
+          Number(data[iii].lat),
+          10000 // 台风模型高度
+        );
+        
+        // 更新3D模型或GIF动画位置
+        if (typhoonModel) {
+          typhoonModel.position = newPosition;
+        } else if (tbentity) {
+          tbentity.position = newPosition;
+        }
+        
+        if (iii > data.length - 1) {
+          iii = 0;
+        } else {
+          iii = iii + 1;
+        }
+        
+        if (showOptions.windCircles) {
+          removeWindCircles();
+          addWindCircles();
+        }
+      }, 200);
+    };
+    
+    // 移除风圈
+    const removeWindCircles = () => {
+      fengquanLayers.forEach(layer => {
+        props.viewer.entities.remove(layer);
+      });
+      fengquanLayers = [];
+    };
+    
+    // 添加风圈
+    const addWindCircles = () => {
+      const circles = ["circle7", "circle10", "circle12"];
+      circles.forEach(item => {
+        const entity = props.viewer.entities.add({
+          id: `tf_polygon_${item}`,
+          name: `tf_polygon_${item}`,
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              let points = [];
+              if (currentPointObj && currentPointObj[item]) {
+                points = getTyphoonPolygonPoints(currentPointObj, item);
+              }
+              return new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(points));
+            }, false),
+            material: Cesium.Color.ORANGE.withAlpha(0.05),
+            extrudedHeight: 1000,
+            outline: true,
+            outlineColor: Cesium.Color.ORANGE,
+            outlineWidth: 2,
+          }
+        });
+        fengquanLayers.push(entity);
+      });
+    };
+    
+    // 获取台风圈坐标点
+    const getTyphoonPolygonPoints = (pointObj, cNum) => {
+      const points = [];
+      const center = [pointObj.lon * 1, pointObj.lat * 1];
+      const radiusList = [
+        pointObj[cNum]['radius1'],
+        pointObj[cNum]['radius2'],
+        pointObj[cNum]['radius3'],
+        pointObj[cNum]['radius4'],
+      ];
+      
+      const startAngleList = [0, 90, 180, 270];
+      let fx, fy;
+      
+      startAngleList.forEach((startAngle, index) => {
+        const radius = radiusList[index] / 100;
+        const pointNum = 90;
+        const endAngle = startAngle + 90;
+        
+        for (let i = 0; i <= pointNum; i++) {
+          const angle = startAngle + ((endAngle - startAngle) * i) / pointNum;
+          const sin = Math.sin((angle * Math.PI) / 180);
+          const cos = Math.cos((angle * Math.PI) / 180);
+          const x = center[0] + radius * sin;
+          const y = center[1] + radius * cos;
+          points.push(x, y);
+          
+          if (startAngle === 0 && i === 0) {
+            fx = x;
+            fy = y;
+          }
+        }
+      });
+      
+      points.push(fx, fy);
+      return points;
+    };
+    
+    // 清除台风数据
+    const clearTyphoon = () => {
+      // 清除风圈
+      removeWindCircles();
+      
+      // 清除数据集合
+      if (myEntityCollection) {
+        props.viewer.dataSources.remove(myEntityCollection);
+        myEntityCollection = null;
+      }
+      
+      // 清除动画
+      if (typhoonInterval) {
+        clearInterval(typhoonInterval);
+        typhoonInterval = null;
+      }
+      
+      // 清除台风眼（包括3D模型）
+      if (typhoonModel) {
+        props.viewer.entities.remove(typhoonModel);
+        typhoonModel = null;
+      }
+      
+      if (tbentity) {
+        props.viewer.entities.remove(tbentity);
+        tbentity = null;
+      }
+      
+      // 清除警戒线
+      const entities = props.viewer.entities.values;
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const entity = entities[i];
+        if (entity.name && (
+          entity.name.includes('警戒线') || 
+          entity.name.includes('24') || 
+          entity.name.includes('48')
+        )) {
+          props.viewer.entities.remove(entity);
+        }
+      }
+      
+      iii = 0;
+      typhoonLoaded.value = false;
+      setStatus('台风数据已清除', 'success');
+    };
+    
+    // 切换控制函数
+    const toggleWarningLines = () => {
+      console.log('切换警戒线显示:', showOptions.warningLines);
+    };
+    
+    const toggleTyphoonPath = () => {
+      console.log('切换台风路径显示:', showOptions.typhoonPath);
+    };
+    
+    const toggleForecast = () => {
+      console.log('切换预测路径显示:', showOptions.forecast);
+    };
+    
+    const toggleTyphoonEye = () => {
+      console.log('切换台风眼显示:', showOptions.typhoonEye);
+    };
+    
+    const toggleWindCircles = () => {
+      console.log('切换风圈显示:', showOptions.windCircles);
+      if (!showOptions.windCircles) {
+        removeWindCircles();
+      }
+    };
+    
+    // 组件销毁时清理
     onBeforeUnmount(() => {
-      // 只有在不保留数据时才清除
-      if (!props.preserveDataOnClose && !props.keepDataOnPanelClose) {
-        clearTyphoon(true);
+      if (!props.preserveDataOnClose) {
+        clearTyphoon();
       }
     });
-
+    
     return {
+      // 状态
       isLoading,
       typhoonLoaded,
-      typhoonData,
       statusMessage,
-      showPath,
-      showWarningLines,
-      isPlaying,
-      animationSpeed,
-      currentTimeIndex,
-      currentPoint,
+      statusType,
+      statusIcon,
+      showOptions,
+      
+      // 方法
       loadTyphoonData,
-      startAutoPlay,
-      pauseAnimation,
-      stopAnimation,
-      updateAnimationSpeed,
-      seekToTime,
-      togglePathDisplay,
-      toggleWarningLines,
       clearTyphoon,
-      getStrengthClass
+      toggleWarningLines,
+      toggleTyphoonPath,
+      toggleForecast,
+      toggleTyphoonEye,
+      toggleWindCircles
     };
   }
 });
@@ -667,91 +847,174 @@ export default defineComponent({
 
 <style scoped>
 .typhoon-analysis {
-  padding: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  max-height: 600px;
+  overflow-y: auto;
 }
 
-.control-section h3 {
-  margin-bottom: 20px;
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
   color: #333;
-  border-bottom: 2px solid #007bff;
-  padding-bottom: 8px;
-}
-
-.input-group {
-  margin-bottom: 20px;
-}
-
-.btn-primary, .btn-secondary, .btn-danger {
-  padding: 10px 15px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.3s;
-  margin-right: 10px;
-}
-
-.btn-primary {
-  background-color: #007bff;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: #0056b3;
-}
-
-.btn-primary:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-
-.full-width-btn {
-  width: 100%;
-}
-
-.control-row {
   margin-bottom: 15px;
-}
-
-.checkbox-group {
-  display: flex;
-  gap: 15px;
-  flex-wrap: wrap;
-}
-
-.checkbox-label {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.speed-slider, .time-slider {
-  width: 100%;
-  margin-top: 8px;
+.control-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
 }
 
-.current-info {
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 5px;
+.control-section h4 {
+  margin: 0 0 15px 0;
+  color: #555;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.control-buttons button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.btn-primary:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-danger:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.control-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.typhoon-legend {
   padding: 15px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 20px;
+}
+
+.typhoon-legend h4 {
+  margin: 0 0 15px 0;
+  color: #555;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+}
+
+.status-info {
   margin-top: 15px;
 }
-
-.strength-1 { color: #28a745; }
-.strength-2 { color: #007bff; }
-.strength-3 { color: #ffc107; }
-.strength-4 { color: #fd7e14; }
-.strength-5 { color: #e83e8c; }
-.strength-6 { color: #dc3545; }
 
 .status-message {
-  margin-top: 15px;
   padding: 10px;
-  background-color: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-message.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.status-message.success {
+  background: #d4edda;
   color: #155724;
-  text-align: center;
+  border: 1px solid #c3e6cb;
+}
+
+.status-message.warning {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.status-message.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f1b0b7;
 }
 </style>
