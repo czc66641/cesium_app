@@ -136,6 +136,14 @@ export default {
     currentLocation: {
       type: Object,
       required: true
+    },
+    preserveDataOnClose: {
+      type: Boolean,
+      default: false
+    },
+    keepDataOnPanelClose: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['update-location'],
@@ -853,110 +861,47 @@ export default {
     };
     
     // 清除现有洪水
-    const clearExistingFlood = () => {
-      stopFloodAnimation();
-      
-      if (floodEntity && props.viewer) {
-        props.viewer.entities.remove(floodEntity);
-        floodEntity = null;
+    const clearExistingFlood = (forceClean = false) => {
+      // 如果设置了保留数据且不是强制清除，则不清除
+      if (props.keepDataOnPanelClose && !forceClean) {
+        console.log('保留洪水分析数据和显示效果');
+        return;
       }
       
-      // 重置当前水位
-      currentWaterLevel.value = minHeight.value;
-    };
-    
-    // 清除洪水分析
-    const clearFloodAnalysis = () => {
-      clearExistingFlood();
-      isActive.value = false;
-      statusMsg.value = "";
-      
-      // 重置统计信息
-      floodStats.value = {
-        areaSize: null,
-        maxDepth: 0,
-        avgDepth: 0,
-        affectedCount: 0
-      };
-    };
-    
-    // 调整视角到洪水区域
-    const flyToFloodArea = () => {
-      if (!props.viewer) return;
-      
       try {
-        if (analysisMode.value === 'regional' && polygonPositions.value.length >= 3) {
-          // 计算多边形中心和适当高度
-          const positions = [...polygonPositions.value];
-          
-          // 计算多边形的中心
-          const center = calculatePolygonCenter(positions);
-          if (!center) return;
-          
-          const height = Math.max(maxWaterLevel.value, maxHeight.value) + 500; // 在最高水位上方500米
-          
-          // 飞行到洪水区域上方
-          props.viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, height),
-            orientation: {
-              heading: 0,
-              pitch: Cesium.Math.toRadians(-45),
-              roll: 0
-            }
-          });
+        // 移除绘制的多边形
+        if (polygonEntity.value && props.viewer) {
+          props.viewer.entities.remove(polygonEntity.value);
+          polygonEntity.value = null;
         }
+        
+        // 移除洪水分析实体
+        if (floodEntity && props.viewer) {
+          props.viewer.entities.remove(floodEntity);
+          floodEntity = null;
+        }
+        
+        // 重置状态
+        polygonPositions.value = [];
+        isActive.value = false;
+        
+        statusMsg.value = '洪水分析已清除';
+        setTimeout(() => {
+          if (statusMsg.value === '洪水分析已清除') {
+            statusMsg.value = '';
+          }
+        }, 2000);
       } catch (error) {
-        console.error('飞行到洪水区域失败:', error);
+        console.error('清除洪水分析失败:', error);
       }
     };
     
-    // 计算多边形中心
-    const calculatePolygonCenter = (positions) => {
-      try {
-        if (!positions || positions.length === 0) return null;
-        
-        // 使用平均值计算中心点
-        let sumX = 0, sumY = 0, sumZ = 0;
-        
-        positions.forEach(pos => {
-          sumX += pos.x;
-          sumY += pos.y;
-          sumZ += pos.z;
-        });
-        
-        const centerPosition = new Cesium.Cartesian3(
-          sumX / positions.length,
-          sumY / positions.length,
-          sumZ / positions.length
-        );
-        
-        // 转为经纬度
-        const cartographic = Cesium.Cartographic.fromCartesian(centerPosition);
-        return {
-          longitude: Cesium.Math.toDegrees(cartographic.longitude),
-          latitude: Cesium.Math.toDegrees(cartographic.latitude)
-        };
-        
-      } catch (error) {
-        console.error('计算多边形中心失败:', error);
-        return null;
-      }
-    };
-    
-    // 组件卸载时清理
+    // 组件卸载时处理
     onBeforeUnmount(() => {
-      // 停止动画
-      stopFloodAnimation();
-      
-      // 清除多边形绘制处理器
-      if (drawHandler) {
-        drawHandler.destroy();
-        drawHandler = null;
+      // 只有在不保留数据时才清除
+      if (!props.preserveDataOnClose && !props.keepDataOnPanelClose) {
+        clearExistingFlood(true);
       }
-      
-      // 清除实体
-      clearFloodAnalysis();
-      clearPolygon();
     });
     
     return {
@@ -982,7 +927,8 @@ export default {
       clearFloodAnalysis,
       toggleFloodAnimation,
       resetFlood,
-      formatArea
+      formatArea,
+      clearExistingFlood
     };
   }
 };

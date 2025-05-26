@@ -427,13 +427,17 @@ export default defineComponent({
   props: {
     viewer: {
       type: Object,
-      required: true,
+      required: true
     },
     currentLocation: {
       type: Object,
-      required: true,
+      required: true
     },
     preserveDataOnClose: {
+      type: Boolean,
+      default: false
+    },
+    keepDataOnPanelClose: {
       type: Boolean,
       default: false
     }
@@ -1453,10 +1457,48 @@ export default defineComponent({
       statusMessage.value = '';
     };
     
-    // 组件卸载时的清理逻辑
+    // 修改清除函数，根据属性决定是否保留数据
+    const clearEarthquakeData = (forceClean = false) => {
+      // 如果设置了保留数据且不是强制清除，则不清除
+      if (props.keepDataOnPanelClose && !forceClean) {
+        console.log('保留地震数据和显示效果');
+        return;
+      }
+      
+      try {
+        // 清除地震数据源
+        if (earthquakeDataSource && props.viewer) {
+          props.viewer.dataSources.remove(earthquakeDataSource);
+          earthquakeDataSource = null;
+        }
+        
+        // 清除辐射圈
+        clearRadiantCircles();
+        
+        // 清除标记点
+        clearMarkers();
+        
+        // 重置状态
+        earthquakeData.value = [];
+        filteredData.value = [];
+        isLoaded.value = false;
+        
+        statusMessage.value = '地震数据已清除';
+        setTimeout(() => {
+          if (statusMessage.value === '地震数据已清除') {
+            statusMessage.value = '';
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('清除地震数据时发生错误:', error);
+      }
+    };
+    
+    // 组件卸载时的处理
     onBeforeUnmount(() => {
-      if (!props.preserveDataOnClose) {
-        clearAllData();
+      // 只有在不保留数据时才清除
+      if (!props.preserveDataOnClose && !props.keepDataOnPanelClose) {
+        clearEarthquakeData(true);
       }
     });
     
@@ -1507,7 +1549,8 @@ export default defineComponent({
       formatDateTime,
       focusOnRegion,
       locateEarthquake,
-      generateMockEarthquakeData
+      generateMockEarthquakeData,
+      clearEarthquakeData
     };
   }
 });

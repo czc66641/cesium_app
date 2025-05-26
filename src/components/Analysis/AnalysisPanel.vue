@@ -7,7 +7,7 @@
           <button @click="minimizePanel" class="minimize-btn" title="最小化面板">
             <i class="fas fa-minus"></i>
           </button>
-          <button @click="$emit('close')" class="close-btn" title="关闭面板（保留地图数据）">
+          <button @click="closePanel" class="close-btn" title="关闭面板（保留地图数据）">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -33,12 +33,41 @@
             :current-location="currentLocation"
             @earthquake-data-loaded="handleEarthquakeDataLoaded"
             :preserve-data-on-close="true"
+            :keep-data-on-panel-close="true"
           />
           
-          <div v-else-if="activeTab === 'weather'" class="coming-soon">
-            <i class="fas fa-cloud-sun"></i>
-            <h3>气象分析</h3>
-            <p>功能开发中...</p>
+          <div v-else-if="activeTab === 'weather'" class="weather-analysis">
+            <TyphoonAnalysis 
+              :viewer="viewer"
+              :current-location="currentLocation"
+              :preserve-data-on-close="true"
+              :keep-data-on-panel-close="true"
+            />
+            
+            <!-- 简化的气象控制面板 -->
+            <div class="weather-controls">
+              <h4>台风模型控制</h4>
+              <div class="weather-options">
+                <label class="weather-option">
+                  <input type="checkbox" v-model="weatherOptions.showPath" @change="toggleTyphoonPath">
+                  <span>显示台风路径</span>
+                </label>
+                <label class="weather-option">
+                  <input type="checkbox" v-model="weatherOptions.showWarningLines" @change="toggleWarningLines">
+                  <span>显示警戒线</span>
+                </label>
+                <label class="weather-option">
+                  <input type="checkbox" v-model="weatherOptions.showTyphoonEye" @change="toggleTyphoonEye">
+                  <span>显示台风眼</span>
+                </label>
+              </div>
+              
+              <div class="model-info">
+                <p><strong>台风模型:</strong> harricane_typhoon_weather_map.glb</p>
+                <p><strong>数据源:</strong> typhoon.json</p>
+                <p><small>模型会根据台风强度自动调整大小和颜色</small></p>
+              </div>
+            </div>
           </div>
           
           <div v-else-if="activeTab === 'environment'" class="coming-soon">
@@ -70,11 +99,13 @@
 <script>
 import { defineComponent, ref } from 'vue';
 import EarthquakeAnalysis from '../finalwork/earthquake.vue';
+import TyphoonAnalysis from './TyphoonAnalysis.vue';
 
 export default defineComponent({
   name: 'AnalysisPanel',
   components: {
-    EarthquakeAnalysis
+    EarthquakeAnalysis,
+    TyphoonAnalysis
   },
   props: {
     visible: {
@@ -102,9 +133,23 @@ export default defineComponent({
       { id: 'population', name: '人口分析', icon: 'fas fa-users' }
     ];
     
-    const handleOverlayClick = () => {
-      // 关闭面板但不清除数据
+    const weatherOptions = ref({
+      showClouds: true,
+      showWind: true,
+      showPressure: true,
+      showTemperature: true
+    });
+    
+    const weatherTime = ref(12);
+    
+    const closePanel = () => {
+      // 只关闭面板，不清除任何数据
       emit('close');
+    };
+    
+    const handleOverlayClick = () => {
+      // 点击遮罩层关闭面板但保留数据
+      closePanel();
     };
     
     const minimizePanel = () => {
@@ -121,14 +166,65 @@ export default defineComponent({
       emit('earthquake-data-loaded', data);
     };
     
+    const toggleClouds = () => {
+      // 切换云层显示逻辑
+      console.log('切换云层显示:', weatherOptions.value.showClouds);
+    };
+    
+    const toggleWind = () => {
+      // 切换风场显示逻辑
+      console.log('切换风场显示:', weatherOptions.value.showWind);
+    };
+    
+    const togglePressure = () => {
+      // 切换气压等值线显示逻辑
+      console.log('切换气压等值线显示:', weatherOptions.value.showPressure);
+    };
+    
+    const toggleTemperature = () => {
+      // 切换温度分布显示逻辑
+      console.log('切换温度分布显示:', weatherOptions.value.showTemperature);
+    };
+    
+    const updateWeatherTime = () => {
+      // 更新气象时间控制逻辑
+      console.log('更新气象时间:', weatherTime.value);
+    };
+    
+    const toggleTyphoonPath = () => {
+      // 切换台风路径显示逻辑
+      console.log('切换台风路径显示:', weatherOptions.value.showPath);
+    };
+    
+    const toggleWarningLines = () => {
+      // 切换警戒线显示逻辑
+      console.log('切换警戒线显示:', weatherOptions.value.showWarningLines);
+    };
+    
+    const toggleTyphoonEye = () => {
+      // 切换台风眼显示逻辑
+      console.log('切换台风眼显示:', weatherOptions.value.showTyphoonEye);
+    };
+    
     return {
       activeTab,
       isMinimized,
       tabs,
+      weatherOptions,
+      weatherTime,
+      closePanel,
       handleOverlayClick,
       minimizePanel,
       restorePanel,
-      handleEarthquakeDataLoaded
+      handleEarthquakeDataLoaded,
+      toggleClouds,
+      toggleWind,
+      togglePressure,
+      toggleTemperature,
+      updateWeatherTime,
+      toggleTyphoonPath,
+      toggleWarningLines,
+      toggleTyphoonEye
     };
   }
 });
@@ -310,5 +406,40 @@ export default defineComponent({
 
 .restore-btn:hover {
   background: #0056b3;
+}
+
+.weather-analysis {
+  margin-top: 20px;
+}
+
+.weather-controls {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f1f1f1;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.weather-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.weather-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.time-range {
+  flex: 1;
 }
 </style>

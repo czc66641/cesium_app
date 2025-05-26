@@ -7,7 +7,85 @@ import 'cesium/Build/Cesium/Widgets/widgets.css';
 // 设置 Cesium Ion 访问令牌
 Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmMzQ5NjA3Ny1iYzdkLTRhYWQtODhjOS0xMDM5ZDU2MDc5NWYiLCJpZCI6MjkzOTI4LCJpYXQiOjE3NDQ2Mjc0MzJ9.5B7kUdXIlR3RrzCEs58kNEFzEgihL6ezYuCjsU6WvXw';
 
-// 创建并挂载应用
+// 设置Cesium的基础路径
+window.CESIUM_BASE_URL = '/node_modules/cesium/Build/Cesium/';
+
+// Excel时间处理相关常量和函数
+const excelEpoch = new Date(1900, 0, 1); // Excel的起始日期
+const daysSince1900 = 0; // 这里应该是实际的天数值
+
+window.testTimeFormat = (timeInput) => {
+  if (typeof timeInput === 'number') {
+    // 修正Excel日期序列号转换
+    const excelDate = new Date((timeInput - 25569) * 86400 * 1000); // Excel日期转JavaScript日期
+    console.log('转换后日期:', excelDate.toISOString());
+    return excelDate;
+  } else if (typeof timeInput === 'string') {
+    console.log('检测到字符串时间:', timeInput);
+    const parsedDate = new Date(timeInput);
+    console.log('解析后日期:', parsedDate.toISOString());
+    return parsedDate;
+  }
+  
+  return null;
+};
+
+// 简化的台风可视化工具 - 仅保留基础功能
+window.typhoonVisualEnhancer = {
+  // 创建简单的台风眼效果
+  createTyphoonEye: (viewer, position, intensity) => {
+    const eyeRadius = Math.max(10, 50 - intensity * 5);
+    const validRadius = Math.max(eyeRadius * 1000, 1000);
+    
+    return viewer.entities.add({
+      position: position,
+      ellipse: {
+        semiMajorAxis: validRadius,
+        semiMinorAxis: validRadius,
+        material: new Cesium.ColorMaterialProperty(
+          new Cesium.CallbackProperty(() => {
+            const time = viewer.clock.currentTime;
+            const seconds = Cesium.JulianDate.secondsDifference(time, viewer.clock.startTime || time);
+            const alpha = (Math.sin(seconds * 0.5) + 1) * 0.3 + 0.2;
+            return Cesium.Color.BLACK.withAlpha(alpha);
+          }, false)
+        ),
+        outline: true,
+        outlineColor: Cesium.Color.WHITE,
+        height: 0
+      }
+    });
+  },
+  
+  // 创建简单的降水效果
+  createRainfallEffect: (viewer, center, intensity) => {
+    const rainEntities = [];
+    const particleCount = Math.min(100, intensity * 20); // 减少粒子数量
+    
+    for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * 2 * Math.PI;
+      const distance = Math.random() * 50000; // 50km范围
+      
+      const rainLng = center.lng + (distance * Math.cos(angle)) / 111000;
+      const rainLat = center.lat + (distance * Math.sin(angle)) / 111000;
+      
+      const rainEntity = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(rainLng, rainLat, Math.random() * 5000),
+        point: {
+          pixelSize: 2,
+          color: Cesium.Color.CYAN.withAlpha(0.6),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+        }
+      });
+      
+      rainEntities.push(rainEntity);
+    }
+    
+    return rainEntities;
+  }
+};
+
+// 创建Vue应用
 const app = createApp(App);
 
 // 添加全局错误处理以便于调试
@@ -24,38 +102,6 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('错误堆栈:', event.reason?.stack);
   event.preventDefault();
 });
-
-// 添加专门的时间解析测试函数（开发时使用）
-window.testTimeFormat = (timeInput) => {
-  console.log('测试时间格式:', timeInput, '类型:', typeof timeInput);
-  
-  if (typeof timeInput === 'number') {
-    console.log('检测到Excel序列号:', timeInput);
-    // Excel序列号转换测试
-    const excelEpoch = new Date(1900, 0, 1);
-    const daysSince1900 = timeInput - 2;
-    const convertedDate = new Date(excelEpoch.getTime() + daysSince1900 * 24 * 60 * 60 * 1000);
-    console.log('转换结果:', convertedDate.toISOString());
-    console.log('可读格式:', convertedDate.toLocaleString('zh-CN'));
-  } else if (typeof timeInput === 'string') {
-    console.log('检测到字符串格式');
-    const cleaned = timeInput.trim().replace(/\s+/g, ' ');
-    console.log('清理后:', cleaned);
-    console.log('分割结果:', cleaned.split(' '));
-  }
-};
-
-// 添加Excel序列号批量测试
-window.testExcelDates = () => {
-  const testNumbers = [40206.62681712963, 44500, 45000]; // 示例Excel序列号
-  testNumbers.forEach(num => {
-    console.log('测试序列号:', num);
-    window.testTimeFormat(num);
-  });
-};
-
-// 确保在挂载前设置Cesium基础配置
-window.CESIUM_BASE_URL = '/cesium/';
 
 // 挂载应用
 app.mount('#app');

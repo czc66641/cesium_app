@@ -23,6 +23,8 @@
         v-if="activeTab === 'visibility'"
         :viewer="viewer"
         :current-location="currentLocation"
+        :preserve-data-on-close="true"
+        :keep-data-on-panel-close="true"
       />
 
       <!-- 高程分析组件 -->
@@ -31,6 +33,8 @@
         :viewer="viewer"
         :current-location="currentLocation"
         @update-location="$emit('update-location', $event)"
+        :preserve-data-on-close="true"
+        :keep-data-on-panel-close="true"
       />
         <!-- 洪水分析组件 -->
       <FloodAnalysis
@@ -38,6 +42,8 @@
         :viewer="viewer"
         :current-location="currentLocation"
         @update-location="$emit('update-location', $event)"
+        :preserve-data-on-close="true"
+        :keep-data-on-panel-close="true"
       />
       
       <!-- 地震分析组件 -->
@@ -46,6 +52,8 @@
         :viewer="viewer"
         :current-location="currentLocation"
         @update-location="$emit('update-location', $event)"
+        :preserve-data-on-close="true"
+        :keep-data-on-panel-close="true"
       />
     </div>
     

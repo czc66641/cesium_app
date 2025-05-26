@@ -98,7 +98,8 @@ export class CesiumHeatmap {
    * 创建Canvas
    */
   createCanvas() {
-    const width = 1024;
+    // 提高Canvas分辨率以获得更精细的效果
+    const width = 1536; // 从1024增加到1536
     const height = Math.round(width * 
       (this.bounds.north - this.bounds.south) / 
       (this.bounds.east - this.bounds.west)
@@ -322,9 +323,11 @@ export class KernelDensityHeatmap extends CesiumHeatmap {
       // 核密度分析专用配置
       kernelType: 'gaussian',
       bandwidth: 'auto',
-      gridResolution: 80,
+      gridResolution: 120, // 增加网格分辨率，从80提高到120
       weightField: null,
       useMagnitudeWeight: true,
+      radius: 35, // 减小热力图点的半径，从50减少到35
+      blur: 0.75, // 减少模糊程度，从0.85减少到0.75
       ...options
     });
   }
@@ -353,7 +356,7 @@ export class KernelDensityHeatmap extends CesiumHeatmap {
       x: parseFloat(eq.longitude),
       y: parseFloat(eq.latitude),
       value: this.options.useMagnitudeWeight ? 
-        Math.pow(parseFloat(eq.magnitude), 1.5) / 10 : 1
+        Math.pow(parseFloat(eq.magnitude), 1.8) / 12 : 1 // 增加权重对比度
     }));
 
     // 使用父类的setData方法

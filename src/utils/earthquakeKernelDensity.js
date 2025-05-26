@@ -11,11 +11,12 @@ export class EarthquakeKernelDensityAnalysis {
       // 核密度分析专用配置
       kernelType: 'gaussian', // gaussian, epanechnikov, quartic
       bandwidth: 'auto', // 'auto' 或具体数值
-      gridResolution: 100, // 网格分辨率
+      gridResolution: 150, // 增加网格分辨率，从100提高到150
       weightField: 'magnitude', // 权重字段名
       useMagnitudeWeight: true, // 是否使用震级权重
       smoothingFactor: 1.0, // 平滑因子
-      densityThreshold: 0.05, // 密度阈值，低于此值的网格不显示
+      densityThreshold: 0.03, // 降低密度阈值，从0.05降到0.03，显示更多细节
+      cellSizeScale: 0.6, // 新增：网格单元大小比例，小于1会让网格更细密
       ...options
     };
     
@@ -141,38 +142,57 @@ export class EarthquakeKernelDensityAnalysis {
     // Silverman规则: h = 1.06 * σ * n^(-1/5)
     const silvermannBandwidth = 1.06 * avgStd * Math.pow(n, -1/5);
     
-    // 根据数据范围调整
+    // 根据数据范围调整 - 缩小带宽以获得更精细的结果
     const maxRange = Math.max(this.bounds.east - this.bounds.west, this.bounds.north - this.bounds.south);
     const adjustedBandwidth = Math.max(
-      silvermannBandwidth * this.options.smoothingFactor,
-      maxRange * 0.02 // 最小带宽为数据范围的2%
+      silvermannBandwidth * this.options.smoothingFactor * 0.8, // 减少20%的平滑
+      maxRange * 0.015 // 最小带宽为数据范围的1.5%（从2%减少）
     );
     
-    return Math.min(adjustedBandwidth, maxRange * 0.2); // 最大带宽为数据范围的20%
+    return Math.min(adjustedBandwidth, maxRange * 0.15); // 最大带宽为数据范围的15%（从20%减少）
   }
 
   /**
    * 生成密度网格
    */
   generateDensityGrid(earthquakes, bandwidth) {
-    const resolution = this.options.gridResolution;
-    const lngStep = (this.bounds.east - this.bounds.west) / (resolution - 1);
-    const latStep = (this.bounds.north - this.bounds.south) / (resolution - 1);
+    // 增加基础分辨率
+    const baseResolution = this.options.gridResolution;
+    
+    // 根据数据密度动态调整分辨率
+    const dataArea = (this.bounds.east - this.bounds.west) * (this.bounds.north - this.bounds.south);
+    const dataDensity = earthquakes.length / dataArea;
+    
+    // 数据密度越高，使用更高的分辨率
+    const densityFactor = Math.max(1, Math.min(2, Math.sqrt(dataDensity * 100)));
+    const resolution = Math.round(baseResolution * densityFactor);
+    
+    // 限制最大分辨率以保证性能
+    const finalResolution = Math.min(resolution, 250);
+    
+    const lngStep = (this.bounds.east - this.bounds.west) / (finalResolution - 1);
+    const latStep = (this.bounds.north - this.bounds.south) / (finalResolution - 1);
+    
+    // 应用网格缩放因子
+    const scaledLngStep = lngStep * this.options.cellSizeScale;
+    const scaledLatStep = latStep * this.options.cellSizeScale;
     
     const densityGrid = {
-      width: resolution,
-      height: resolution,
+      width: finalResolution,
+      height: finalResolution,
       bounds: this.bounds,
-      data: new Array(resolution * resolution).fill(0),
+      data: new Array(finalResolution * finalResolution).fill(0),
       maxDensity: 0,
-      cellSize: { lng: lngStep, lat: latStep }
+      cellSize: { lng: scaledLngStep, lat: scaledLatStep },
+      originalCellSize: { lng: lngStep, lat: latStep } // 保存原始大小用于计算
     };
     
-    console.log('开始计算密度网格，网格大小:', resolution, 'x', resolution);
+    console.log('开始计算密度网格，网格大小:', finalResolution, 'x', finalResolution);
+    console.log('网格单元大小:', scaledLngStep.toFixed(6), 'x', scaledLatStep.toFixed(6), '度');
     
     // 计算每个网格点的密度
-    for (let i = 0; i < resolution; i++) {
-      for (let j = 0; j < resolution; j++) {
+    for (let i = 0; i < finalResolution; i++) {
+      for (let j = 0; j < finalResolution; j++) {
         const gridLng = this.bounds.west + i * lngStep;
         const gridLat = this.bounds.south + j * latStep;
         
@@ -188,14 +208,14 @@ export class EarthquakeKernelDensityAnalysis {
           density += kernelValue * eq.weight;
         });
         
-        const index = j * resolution + i;
+        const index = j * finalResolution + i;
         densityGrid.data[index] = density;
         densityGrid.maxDensity = Math.max(densityGrid.maxDensity, density);
       }
       
       // 显示进度
-      if (i % 10 === 0) {
-        console.log(`密度计算进度: ${Math.round((i / resolution) * 100)}%`);
+      if (i % 20 === 0) {
+        console.log(`密度计算进度: ${Math.round((i / finalResolution) * 100)}%`);
       }
     }
     
@@ -262,21 +282,22 @@ export class EarthquakeKernelDensityAnalysis {
     this.dataSource = new Cesium.CustomDataSource('earthquakeKernelDensity');
     this.viewer.dataSources.add(this.dataSource);
     
-    const { width, height, data, maxDensity, bounds, cellSize } = this.densityGrid;
+    const { width, height, data, maxDensity, bounds, cellSize, originalCellSize } = this.densityGrid;
     
     // 定义密度分级颜色
     const colorLevels = [
-      { threshold: 0.1, color: Cesium.Color.BLUE.withAlpha(0.3) },
-      { threshold: 0.3, color: Cesium.Color.CYAN.withAlpha(0.5) },
-      { threshold: 0.5, color: Cesium.Color.GREEN.withAlpha(0.6) },
-      { threshold: 0.7, color: Cesium.Color.YELLOW.withAlpha(0.7) },
-      { threshold: 0.85, color: Cesium.Color.ORANGE.withAlpha(0.8) },
-      { threshold: 1.0, color: Cesium.Color.RED.withAlpha(0.9) }
+      { threshold: 0.1, color: Cesium.Color.BLUE.withAlpha(0.4) },
+      { threshold: 0.25, color: Cesium.Color.CYAN.withAlpha(0.5) },
+      { threshold: 0.4, color: Cesium.Color.GREEN.withAlpha(0.6) },
+      { threshold: 0.55, color: Cesium.Color.YELLOW.withAlpha(0.7) },
+      { threshold: 0.7, color: Cesium.Color.ORANGE.withAlpha(0.8) },
+      { threshold: 0.85, color: Cesium.Color.RED.withAlpha(0.9) },
+      { threshold: 1.0, color: Cesium.Color.DARKRED.withAlpha(0.95) }
     ];
     
     let cellCount = 0;
     
-    // 创建密度网格可视化
+    // 创建密度网格可视化 - 使用缩放后的网格大小
     for (let i = 0; i < width - 1; i++) {
       for (let j = 0; j < height - 1; j++) {
         const density = data[j * width + i];
@@ -289,17 +310,28 @@ export class EarthquakeKernelDensityAnalysis {
         // 根据密度选择颜色
         const color = this.getColorFromDensity(normalizedDensity, colorLevels);
         
-        // 计算网格四个角的坐标
-        const lng1 = bounds.west + i * cellSize.lng;
-        const lat1 = bounds.south + j * cellSize.lat;
-        const lng2 = bounds.west + (i + 1) * cellSize.lng;
-        const lat2 = bounds.south + (j + 1) * cellSize.lat;
+        // 计算网格四个角的坐标 - 使用原始网格步长确保覆盖完整
+        const lng1 = bounds.west + i * originalCellSize.lng;
+        const lat1 = bounds.south + j * originalCellSize.lat;
+        const lng2 = bounds.west + (i + 1) * originalCellSize.lng;
+        const lat2 = bounds.south + (j + 1) * originalCellSize.lat;
         
-        // 创建网格矩形
+        // 但是使用更小的显示区域来创建细密效果
+        const centerLng = (lng1 + lng2) / 2;
+        const centerLat = (lat1 + lat2) / 2;
+        const halfScaledLng = cellSize.lng / 2;
+        const halfScaledLat = cellSize.lat / 2;
+        
+        // 创建缩放后的网格矩形
         this.dataSource.entities.add({
           id: `density_cell_${i}_${j}`,
           rectangle: {
-            coordinates: Cesium.Rectangle.fromDegrees(lng1, lat1, lng2, lat2),
+            coordinates: Cesium.Rectangle.fromDegrees(
+              centerLng - halfScaledLng,
+              centerLat - halfScaledLat,
+              centerLng + halfScaledLng,
+              centerLat + halfScaledLat
+            ),
             material: color,
             height: 0,
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
@@ -318,7 +350,7 @@ export class EarthquakeKernelDensityAnalysis {
     
     console.log(`创建了 ${cellCount} 个密度网格单元`);
     
-    // 添加密度等值线
+    // 添加密度等值线 - 使用更密集的等值线
     this.addDensityContours();
   }
 
@@ -349,8 +381,8 @@ export class EarthquakeKernelDensityAnalysis {
   addDensityContours() {
     const { maxDensity } = this.densityGrid;
     
-    // 定义等值线级别（密度的百分比）
-    const contourLevels = [0.2, 0.4, 0.6, 0.8].map(level => level * maxDensity);
+    // 定义更多等值线级别（密度的百分比）
+    const contourLevels = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map(level => level * maxDensity);
     
     contourLevels.forEach((level, levelIndex) => {
       const contours = this.extractContours(level);
@@ -361,9 +393,9 @@ export class EarthquakeKernelDensityAnalysis {
         // 将网格坐标转换为经纬度
         const positions = contour.map(point => 
           Cesium.Cartesian3.fromDegrees(
-            this.bounds.west + point.x * this.densityGrid.cellSize.lng,
-            this.bounds.south + point.y * this.densityGrid.cellSize.lat,
-            5 // 略高于地面
+            this.bounds.west + point.x * this.densityGrid.originalCellSize.lng,
+            this.bounds.south + point.y * this.densityGrid.originalCellSize.lat,
+            3 // 略高于地面
           )
         );
         
@@ -372,13 +404,17 @@ export class EarthquakeKernelDensityAnalysis {
           positions.push(positions[0]);
         }
         
+        // 根据等值线级别设置不同的线宽和透明度
+        const lineWidth = levelIndex < 3 ? 1.5 : 2.5;
+        const alpha = 0.6 + (levelIndex / contourLevels.length) * 0.4;
+        
         // 创建等值线
         this.dataSource.entities.add({
           id: `contour_${levelIndex}_${contourIndex}`,
           polyline: {
             positions: positions,
-            width: 2,
-            material: Cesium.Color.WHITE.withAlpha(0.8),
+            width: lineWidth,
+            material: Cesium.Color.WHITE.withAlpha(alpha),
             clampToGround: true
           },
           properties: {

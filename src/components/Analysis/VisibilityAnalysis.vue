@@ -116,6 +116,14 @@ export default defineComponent({
       type: Object,
       required: true,
     },
+    preserveDataOnClose: {
+      type: Boolean,
+      default: false
+    },
+    keepDataOnPanelClose: {
+      type: Boolean,
+      default: false
+    }
   },
   setup(props) {
     // 分析类型：viewshed (可视区域分析) 或 sightline (视线分析)
@@ -1259,93 +1267,70 @@ export default defineComponent({
     };
 
     // 清除分析数据和显示 - 加强版
-    const clearAnalysis = () => {
-      // 移除预览实体
-      removePreviewEntities();
+    const clearAnalysis = (forceClean = false) => {
+      // 如果设置了保留数据且不是强制清除，则不清除
+      if (props.keepDataOnPanelClose && !forceClean) {
+        console.log('保留视域分析结果');
+        return;
+      }
       
-      // 移除所有分析相关实体
-      if (props.viewer) {
-        try {
-          // 移除观察点
-          if (viewerPointEntity) {
-            removeEntity(viewerPointEntity);
-            viewerPointEntity = null;
-          }
-          
-          // 移除目标点
-          if (targetPointEntity) {
-            removeEntity(targetPointEntity);
-            targetPointEntity = null;
-          }
-          
-          // 移除视线
-          if (sightlineEntity) {
-            removeEntity(sightlineEntity);
-            sightlineEntity = null;
-          }
-          
-          // 移除障碍点
-          if (obstaclePointEntity) {
-            removeEntity(obstaclePointEntity);
-            obstaclePointEntity = null;
-          }
-          
-          // 移除视域分析实体
-          if (viewshedEntity) {
-            removeEntity(viewshedEntity);
-            viewshedEntity = null;
-          }
-          
-          // 清除3D视域分析
-          if (viewshed3D) {
-            const cleared = viewshed3D.clear();
-            if (cleared) {
-              console.log('3D视域分析已清除');
-            } else {
-              console.warn('3D视域分析清除可能不完整');
-              
-              // 尝试捕捉并清除可能遗漏的实体
-              const entitiesToRemove = [];
-              props.viewer.entities.values.forEach(entity => {
-                if (entity.id && entity.id.toString().includes('viewshed')) {
-                  entitiesToRemove.push(entity);
-                }
-              });
-              
-              entitiesToRemove.forEach(entity => {
-                try {
-                  props.viewer.entities.remove(entity);
-                } catch (error) {
-                  console.error('移除实体失败:', error);
-                }
-              });
-            }
-            viewshed3D = null;
-          }
-          
-          // 强制刷新场景
-          props.viewer.scene.requestRender();
-        } catch (error) {
-          console.error('清除分析时出错:', error);
+      try {
+        // 清除3D视域分析
+        if (viewshed3D) {
+          viewshed3D.clear();
+          viewshed3D = null;
         }
+        
+        // 清除分析实体
+        const entitiesToRemove = [
+          viewerPointEntity,
+          targetPointEntity,
+          sightlineEntity,
+          viewshedEntity,
+          obstaclePointEntity
+        ];
+        
+        entitiesToRemove.forEach(entity => {
+          if (entity && props.viewer && props.viewer.entities.contains(entity)) {
+            props.viewer.entities.remove(entity);
+          }
+        });
+        
+        // 重置实体引用
+        viewerPointEntity = null;
+        targetPointEntity = null;
+        sightlineEntity = null;
+        viewshedEntity = null;
+        obstaclePointEntity = null;
+        
+        // 重置分析结果
+        sightlineResult.value = null;
+        
+        statusMessage.value = '视域分析已清除';
+        setTimeout(() => {
+          if (statusMessage.value === '视域分析已清除') {
+            statusMessage.value = '';
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('清除视域分析失败:', error);
+      }
+    };
+    
+    // 组件卸载时处理
+    onBeforeUnmount(() => {
+      // 清除分析处理器
+      if (analysisHandler && !analysisHandler.isDestroyed()) {
+        analysisHandler.destroy();
+        analysisHandler = null;
       }
       
-      // 重置分析结果
-      sightlineResult.value = null;
-      statusMessage.value = '';
-      
-      console.log('分析已完全清除');
-    };
-
-    // 通用实体移除函数 - 新增
-    const removeEntity = (entity) => {
-      if (entity && props.viewer && props.viewer.entities.contains(entity)) {
-        props.viewer.entities.remove(entity);
-        return true;
+      // 只有在不保留数据时才清除分析结果
+      if (!props.preserveDataOnClose && !props.keepDataOnPanelClose) {
+        clearAnalysis(true);
       }
-      return false;
-    };
-
+    });
+    
     // 初始化事件
     onMounted(() => {
       if (props.viewer) {

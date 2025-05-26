@@ -16,9 +16,31 @@
     <!-- 地图容器 -->
     <div ref="cesiumContainer" id="cesiumContainer"></div>
 
+    <!-- 图层管理器 - 固定在左侧 -->
+    <LayerManager
+      v-if="activePanels.includes('layerManager') && viewer"
+      ref="layerManagerRef"
+      :viewer="viewer"
+      @remove-layer="handleRemoveLayer"
+    />
+
+    <!-- 鼠标事件信息显示 - 固定在右下角 -->
+    <MouseEvent 
+      v-if="viewer"
+      :viewer="viewer" 
+      :currentLocation="currentLocation" 
+      @update-location="updateLocation" 
+    />
+
     <!-- 控制面板 -->
     <ViewTranference v-if="activePanels.includes('viewControl')" :viewer="viewer" :currentLocation="currentLocation" @update-location="updateLocation" />
-    <FileMap v-if="activePanels.includes('dataLoad')" :viewer="viewer" />
+    <FileMap 
+      v-if="activePanels.includes('dataLoad')" 
+      :viewer="viewer" 
+      :currentLocation="currentLocation"
+      @update-location="updateLocation"
+      @add-layer="handleAddLayer"
+    />
     <Analysis v-if="activePanels.includes('analysis')" :viewer="viewer" :currentLocation="currentLocation" @update-location="updateLocation" />
 
     <!-- 综合分析面板 -->
@@ -55,6 +77,8 @@ import FileMap from './components/FileMap.vue';
 import Analysis from './components/Analysis/index.vue';
 import AnalysisPanel from './components/Analysis/AnalysisPanel.vue';
 import EarthquakeDashboard from './components/Dashboard/EarthquakeDashboard.vue';
+import MouseEvent from './components/MouseEvent.vue';
+import LayerManager from './components/LayerManager.vue';
 
 export default defineComponent({
   name: 'App',
@@ -64,7 +88,9 @@ export default defineComponent({
     FileMap,
     Analysis,
     AnalysisPanel,
-    EarthquakeDashboard
+    EarthquakeDashboard,
+    MouseEvent,
+    LayerManager
   },
   setup() {
     // 基础状态
@@ -248,6 +274,7 @@ export default defineComponent({
                 maximumLevel: 18,
               })
             );
+            viewer.value.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
             break;
 
           case 'gaodeSatellite':
@@ -257,6 +284,7 @@ export default defineComponent({
                 maximumLevel: 18,
               })
             );
+            viewer.value.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
             break;
 
           case 'osm':
@@ -465,16 +493,53 @@ export default defineComponent({
       console.log('地震热力图已清除');
     };
 
-    // 生命周期钩子
-    onMounted(() => {
-      initCesium();
-    });
+    const layerManagerRef = ref(null);
+    
+    // 处理添加图层事件
+    const handleAddLayer = (layerInfo) => {
+      console.log('应用收到添加图层请求:', layerInfo);
+      
+      if (layerManagerRef.value) {
+        layerManagerRef.value.addLayer(layerInfo);
+        console.log('图层已添加到管理器');
+      } else {
+        console.error('图层管理器引用无效');
+      }
+    };
+    
+    // 处理移除图层事件
+    const handleRemoveLayer = (layerInfo) => {
+      console.log('图层已从场景移除:', layerInfo.name);
+      
+      // 可以在这里添加额外的清理逻辑
+      if (layerInfo.type === 'GLTF' && layerInfo.entity) {
+        // 清理glTF相关资源
+        console.log('清理glTF资源');
+      } else if (layerInfo.type === '3DTILES' && layerInfo.tileset) {
+        // 清理3D Tiles相关资源
+        console.log('清理3D Tiles资源');
+      } else if (layerInfo.type === 'GEOJSON' && layerInfo.dataSource) {
+        // 清理GeoJSON相关资源
+        console.log('清理GeoJSON资源');
+      }
+    };
 
+    // 组件卸载时的清理工作
     onBeforeUnmount(() => {
+      // 清理图层管理器
+      if (layerManagerRef.value && typeof layerManagerRef.value.cleanup === 'function') {
+        layerManagerRef.value.cleanup();
+      }
+      
       if (viewer.value) {
         viewer.value.destroy();
         viewer.value = null;
       }
+    });
+
+    // 生命周期钩子
+    onMounted(() => {
+      initCesium();
     });
 
     return {
@@ -496,7 +561,10 @@ export default defineComponent({
       openEarthquakeAnalysis,
       locateEarthquake,
       generateEarthquakeHeatmap,
-      clearEarthquakeHeatmap
+      clearEarthquakeHeatmap,
+      layerManagerRef,
+      handleAddLayer,
+      handleRemoveLayer
     };
   }
 });
