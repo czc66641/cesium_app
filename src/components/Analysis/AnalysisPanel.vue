@@ -3,12 +3,17 @@
     <div class="analysis-panel" @click.stop>
       <div class="panel-header">
         <h2>综合分析工具</h2>
-        <button @click="$emit('close')" class="close-btn">
-          <i class="fas fa-times"></i>
-        </button>
+        <div class="header-controls">
+          <button @click="minimizePanel" class="minimize-btn" title="最小化面板">
+            <i class="fas fa-minus"></i>
+          </button>
+          <button @click="$emit('close')" class="close-btn" title="关闭面板（保留地图数据）">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
       </div>
       
-      <div class="panel-content">
+      <div class="panel-content" v-if="!isMinimized">
         <div class="analysis-tabs">
           <button 
             v-for="tab in tabs" 
@@ -25,7 +30,9 @@
           <EarthquakeAnalysis 
             v-if="activeTab === 'earthquake'"
             :viewer="viewer"
+            :current-location="currentLocation"
             @earthquake-data-loaded="handleEarthquakeDataLoaded"
+            :preserve-data-on-close="true"
           />
           
           <div v-else-if="activeTab === 'weather'" class="coming-soon">
@@ -46,6 +53,15 @@
             <p>功能开发中...</p>
           </div>
         </div>
+      </div>
+      
+      <!-- 最小化状态的显示 -->
+      <div v-else class="minimized-content">
+        <span>综合分析工具已最小化</span>
+        <button @click="restorePanel" class="restore-btn">
+          <i class="fas fa-expand"></i>
+          展开
+        </button>
       </div>
     </div>
   </div>
@@ -68,11 +84,16 @@ export default defineComponent({
     viewer: {
       type: Object,
       required: false
+    },
+    currentLocation: {
+      type: Object,
+      required: true
     }
   },
   emits: ['close', 'earthquake-data-loaded'],
   setup(props, { emit }) {
     const activeTab = ref('earthquake');
+    const isMinimized = ref(false);
     
     const tabs = [
       { id: 'earthquake', name: '地震分析', icon: 'fas fa-mountain' },
@@ -82,7 +103,16 @@ export default defineComponent({
     ];
     
     const handleOverlayClick = () => {
+      // 关闭面板但不清除数据
       emit('close');
+    };
+    
+    const minimizePanel = () => {
+      isMinimized.value = true;
+    };
+    
+    const restorePanel = () => {
+      isMinimized.value = false;
     };
     
     // 处理地震数据加载事件，传递给App.vue
@@ -93,8 +123,11 @@ export default defineComponent({
     
     return {
       activeTab,
+      isMinimized,
       tabs,
       handleOverlayClick,
+      minimizePanel,
+      restorePanel,
       handleEarthquakeDataLoaded
     };
   }
@@ -139,6 +172,12 @@ export default defineComponent({
   font-size: 20px;
 }
 
+.header-controls {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
 .close-btn {
   background: rgba(255, 255, 255, 0.2);
   border: none;
@@ -154,6 +193,24 @@ export default defineComponent({
 }
 
 .close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.minimize-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.minimize-btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
@@ -225,5 +282,33 @@ export default defineComponent({
   margin: 0;
   font-size: 16px;
   opacity: 0.7;
+}
+
+.minimized-content {
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8f9fa;
+  font-size: 14px;
+  color: #666;
+}
+
+.restore-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  transition: background-color 0.3s ease;
+}
+
+.restore-btn:hover {
+  background: #0056b3;
 }
 </style>
