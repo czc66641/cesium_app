@@ -5,9 +5,13 @@
       <div class="dashboard-header">
         <h2 class="dashboard-title">
           <i class="fas fa-chart-bar"></i>
-          地震数据看板
+          地震数据分析看板
         </h2>
         <div class="header-controls">
+          <button class="view-toggle-btn" @click="toggleView">
+            <i class="fas" :class="currentView === 'overview' ? 'fa-chart-line' : 'fa-th-large'"></i>
+            {{ currentView === 'overview' ? '详细分析' : '概览视图' }}
+          </button>
           <button class="refresh-btn" @click="refreshData" :disabled="isRefreshing">
             <i class="fas fa-sync-alt" :class="{ 'fa-spin': isRefreshing }"></i>
             {{ isRefreshing ? '刷新中...' : '刷新数据' }}
@@ -18,141 +22,457 @@
         </div>
       </div>
 
-      <!-- 统计概览 -->
-      <div class="stats-overview">
-        <div class="stat-card">
-          <div class="stat-icon earthquake-icon">
-            <i class="fas fa-globe"></i>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ totalCount }}</div>
-            <div class="stat-label">总地震数</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon major-icon">
-            <i class="fas fa-exclamation-triangle"></i>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ majorEarthquakes }}</div>
-            <div class="stat-label">强震数量 (M≥6.0)</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon magnitude-icon">
-            <i class="fas fa-chart-line"></i>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">M{{ maxMagnitude?.toFixed(1) || '0.0' }}</div>
-            <div class="stat-label">最大震级</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon depth-icon">
-            <i class="fas fa-arrows-alt-v"></i>
-          </div>
-          <div class="stat-content">
-            <div class="stat-number">{{ maxDepth?.toFixed(0) || '0' }}km</div>
-            <div class="stat-label">最大深度</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 操作按钮 -->
-      <div class="action-buttons">
-        <button class="action-btn primary" @click="$emit('open-earthquake-analysis')">
-          <i class="fas fa-search"></i>
-          打开地震分析
-        </button>
-        <button class="action-btn secondary" @click="toggleHeatmap">
-          <i class="fas fa-fire"></i>
-          {{ showHeatmap ? '隐藏' : '显示' }}热力图
-        </button>
-      </div>
-
-      <!-- 地震分布图表 -->
-      <div class="chart-section">
-        <h3 class="section-title">震级分布</h3>
-        <div class="magnitude-chart">
-          <div 
-            v-for="(range, index) in magnitudeRanges" 
-            :key="index"
-            class="magnitude-bar"
-            :style="{ height: range.height + '%' }"
-            :title="`M${range.min}-${range.max}: ${range.count}次`"
-          >
-            <div class="bar-label">{{ range.label }}</div>
-            <div class="bar-count">{{ range.count }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 深度分布图表 -->
-      <div class="chart-section">
-        <h3 class="section-title">深度分布</h3>
-        <div class="depth-chart">
-          <div 
-            v-for="(range, index) in depthRanges" 
-            :key="index"
-            class="depth-bar"
-            :style="{ height: range.height + '%' }"
-            :title="`${range.min}-${range.max}km: ${range.count}次`"
-          >
-            <div class="bar-label">{{ range.label }}</div>
-            <div class="bar-count">{{ range.count }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 最近地震列表 -->
-      <div class="recent-earthquakes">
-        <h3 class="section-title">
-          最近强震 (M≥5.0)
-          <span class="earthquake-count">({{ recentMajorEarthquakes.length }}条)</span>
-        </h3>
-        <div class="earthquake-list">
-          <div 
-            v-for="earthquake in recentMajorEarthquakes.slice(0, 10)" 
-            :key="earthquake.id"
-            class="earthquake-item"
-            @click="$emit('locate-earthquake', earthquake)"
-          >
-            <div class="earthquake-magnitude" :class="getMagnitudeClass(earthquake.magnitude)">
-              M{{ earthquake.magnitude?.toFixed(1) || '0.0' }}
+      <!-- 概览视图 -->
+      <div v-if="currentView === 'overview'" class="overview-content">
+        <!-- 统计概览 -->
+        <div class="stats-overview">
+          <div class="stat-card">
+            <div class="stat-icon earthquake-icon">
+              <i class="fas fa-globe"></i>
             </div>
-            <div class="earthquake-info">
-              <div class="earthquake-location">{{ earthquake.location || '未知位置' }}</div>
-              <div class="earthquake-details">
-                <span>深度: {{ earthquake.depth?.toFixed(1) || '0' }}km</span>
-                <span>时间: {{ formatDate(earthquake.date) }}</span>
+            <div class="stat-content">
+              <div class="stat-number">{{ totalCount }}</div>
+              <div class="stat-label">总地震数</div>
+              <div class="stat-trend" v-if="yearlyTrend">
+                <i class="fas" :class="yearlyTrend > 0 ? 'fa-arrow-up trend-up' : 'fa-arrow-down trend-down'"></i>
+                {{ Math.abs(yearlyTrend).toFixed(1) }}% 年度变化
               </div>
             </div>
-            <div class="earthquake-coords">
-              <div>{{ earthquake.longitude?.toFixed(3) || '0' }}°E</div>
-              <div>{{ earthquake.latitude?.toFixed(3) || '0' }}°N</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon major-icon">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ majorEarthquakes }}</div>
+              <div class="stat-label">强震数量 (M≥6.0)</div>
+              <div class="stat-sub">占比 {{ ((majorEarthquakes / totalCount) * 100).toFixed(1) }}%</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon magnitude-icon">
+              <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">M{{ maxMagnitude?.toFixed(1) || '0.0' }}</div>
+              <div class="stat-label">最大震级</div>
+              <div class="stat-sub">平均: M{{ avgMagnitude?.toFixed(1) || '0.0' }}</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon depth-icon">
+              <i class="fas fa-arrows-alt-v"></i>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ maxDepth?.toFixed(0) || '0' }}km</div>
+              <div class="stat-label">最大深度</div>
+              <div class="stat-sub">平均: {{ avgDepth?.toFixed(0) || '0' }}km</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+          <button class="action-btn primary" @click="$emit('open-earthquake-analysis')">
+            <i class="fas fa-search"></i>
+            打开地震分析
+          </button>
+          <button class="action-btn secondary" @click="toggleHeatmap">
+            <i class="fas fa-fire"></i>
+            {{ showHeatmap ? '隐藏' : '显示' }}热力图
+          </button>
+          <button class="action-btn tertiary" @click="showSeismicBelts">
+            <i class="fas fa-map-marked-alt"></i>
+            地震带分析
+          </button>
+        </div>
+
+        <!-- 震级分布环形图 -->
+        <div class="chart-section">
+          <h3 class="section-title">
+            <i class="fas fa-chart-pie"></i>
+            震级分布概览
+          </h3>
+          <div class="donut-chart-container">
+            <div class="donut-chart" ref="donutChart">
+              <svg width="200" height="200" viewBox="0 0 200 200">
+                <circle cx="100" cy="100" r="80" fill="none" stroke="#f0f0f0" stroke-width="20"/>
+                <circle 
+                  v-for="(segment, index) in donutSegments" 
+                  :key="index"
+                  cx="100" 
+                  cy="100" 
+                  r="80" 
+                  fill="none" 
+                  :stroke="segment.color" 
+                  stroke-width="20"
+                  :stroke-dasharray="`${segment.length} ${502.4 - segment.length}`"
+                  :stroke-dashoffset="segment.offset"
+                  :title="`${segment.label}: ${segment.count}次 (${segment.percentage}%)`"
+                  class="donut-segment"
+                />
+                <text x="100" y="95" text-anchor="middle" class="donut-total">{{ totalCount }}</text>
+                <text x="100" y="115" text-anchor="middle" class="donut-label">地震总数</text>
+              </svg>
+            </div>
+            <div class="donut-legend">
+              <div 
+                v-for="(segment, index) in donutSegments" 
+                :key="index"
+                class="legend-item"
+              >
+                <div class="legend-color" :style="{ backgroundColor: segment.color }"></div>
+                <span class="legend-text">{{ segment.label }} ({{ segment.count }})</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最近地震列表 -->
+        <div class="recent-earthquakes">
+          <h3 class="section-title">
+            <i class="fas fa-clock"></i>
+            最近强震 (M≥5.0)
+            <span class="earthquake-count">({{ recentMajorEarthquakes.length }}条)</span>
+          </h3>
+          <div class="earthquake-list">
+            <div 
+              v-for="earthquake in recentMajorEarthquakes.slice(0, 8)" 
+              :key="earthquake.id"
+              class="earthquake-item"
+              @click="$emit('locate-earthquake', earthquake)"
+            >
+              <div class="earthquake-magnitude" :class="getMagnitudeClass(earthquake.magnitude)">
+                M{{ earthquake.magnitude?.toFixed(1) || '0.0' }}
+              </div>
+              <div class="earthquake-info">
+                <div class="earthquake-location">{{ earthquake.location || '未知位置' }}</div>
+                <div class="earthquake-details">
+                  <span><i class="fas fa-arrows-alt-v"></i> {{ earthquake.depth?.toFixed(1) || '0' }}km</span>
+                  <span><i class="fas fa-clock"></i> {{ formatDate(earthquake.date) }}</span>
+                </div>
+              </div>
+              <div class="earthquake-coords">
+                <div>{{ earthquake.longitude?.toFixed(3) || '0' }}°E</div>
+                <div>{{ earthquake.latitude?.toFixed(3) || '0' }}°N</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 时间分布图表 -->
-      <div class="chart-section">
-        <h3 class="section-title">时间分布 (按月)</h3>
-        <div class="timeline-chart">
-          <div 
-            v-for="(month, index) in monthlyDistribution" 
-            :key="index"
-            class="timeline-bar"
-            :style="{ height: month.height + '%' }"
-            :title="`${month.month}: ${month.count}次`"
-          >
-            <div class="timeline-label">{{ month.label }}</div>
-            <div class="timeline-count">{{ month.count }}</div>
+      <!-- 详细分析视图 -->
+      <div v-else class="detailed-content">
+        <!-- 历年地震数量趋势线图 -->
+        <div class="chart-section full-width">
+          <h3 class="section-title">
+            <i class="fas fa-chart-line"></i>
+            历年地震活动趋势
+          </h3>
+          <div class="line-chart-container">
+            <svg class="line-chart" :width="lineChartWidth" height="300" viewBox="`0 0 ${lineChartWidth} 300`">
+              <!-- 网格线 -->
+              <g class="grid">
+                <line 
+                  v-for="i in 5" 
+                  :key="`h-${i}`"
+                  :x1="60" 
+                  :y1="50 + (i-1) * 40" 
+                  :x2="lineChartWidth - 40" 
+                  :y2="50 + (i-1) * 40" 
+                  stroke="#e0e0e0" 
+                  stroke-width="1"
+                />
+                <line 
+                  v-for="(year, index) in yearlyData" 
+                  :key="`v-${index}`"
+                  :x1="60 + index * yearStepWidth" 
+                  :y1="50" 
+                  :x2="60 + index * yearStepWidth" 
+                  :y2="210" 
+                  stroke="#e0e0e0" 
+                  stroke-width="1"
+                />
+              </g>
+              
+              <!-- Y轴标签 -->
+              <g class="y-axis">
+                <text 
+                  v-for="i in 5" 
+                  :key="`y-${i}`"
+                  :x="50" 
+                  :y="55 + (5-i) * 40" 
+                  text-anchor="end" 
+                  class="axis-label"
+                >
+                  {{ Math.round(maxYearlyCount * (i-1) / 4) }}
+                </text>
+              </g>
+              
+              <!-- X轴标签 -->
+              <g class="x-axis">
+                <text 
+                  v-for="(year, index) in yearlyData" 
+                  :key="`x-${index}`"
+                  :x="60 + index * yearStepWidth" 
+                  :y="230" 
+                  text-anchor="middle" 
+                  class="axis-label"
+                >
+                  {{ year.year }}
+                </text>
+              </g>
+              
+              <!-- 趋势线 -->
+              <polyline 
+                :points="trendLinePoints" 
+                fill="none" 
+                stroke="url(#lineGradient)" 
+                stroke-width="3"
+                class="trend-line"
+              />
+              
+              <!-- 数据点 -->
+              <g class="data-points">
+                <circle 
+                  v-for="(year, index) in yearlyData" 
+                  :key="`point-${index}`"
+                  :cx="60 + index * yearStepWidth"
+                  :cy="210 - (year.count / maxYearlyCount) * 160"
+                  r="5"
+                  :fill="getYearPointColor(year.count)"
+                  stroke="white"
+                  stroke-width="2"
+                  class="data-point"
+                  @mouseover="showTooltip($event, year)"
+                  @mouseout="hideTooltip"
+                />
+              </g>
+              
+              <!-- 渐变定义 -->
+              <defs>
+                <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                  <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                </linearGradient>
+              </defs>
+            </svg>
+            
+            <!-- 图表说明 -->
+            <div class="chart-summary">
+              <div class="summary-item">
+                <span class="summary-label">数据年份:</span>
+                <span class="summary-value">{{ yearlyData.length }}年</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">年均地震:</span>
+                <span class="summary-value">{{ avgYearlyCount.toFixed(0) }}次</span>
+              </div>
+              <div class="summary-item">
+                <span class="summary-label">峰值年份:</span>
+                <span class="summary-value">{{ peakYear?.year || '未知' }} ({{ peakYear?.count || 0 }}次)</span>
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- 震级-深度散点图 -->
+        <div class="chart-section full-width">
+          <h3 class="section-title">
+            <i class="fas fa-project-diagram"></i>
+            震级-深度关系分析
+          </h3>
+          <div class="scatter-chart-container">
+            <svg class="scatter-chart" width="600" height="350" viewBox="0 0 600 350">
+              <!-- 网格 -->
+              <g class="grid">
+                <line 
+                  v-for="i in 6" 
+                  :key="`sh-${i}`"
+                  x1="60" 
+                  :y1="50 + (i-1) * 40" 
+                  x2="540" 
+                  :y2="50 + (i-1) * 40" 
+                  stroke="#e0e0e0"
+                />
+                <line 
+                  v-for="i in 9" 
+                  :key="`sv-${i}`"
+                  :x1="60 + (i-1) * 60" 
+                  y1="50" 
+                  :x2="60 + (i-1) * 60" 
+                  y2="250" 
+                  stroke="#e0e0e0"
+                />
+              </g>
+              
+              <!-- 坐标轴标签 -->
+              <g class="axes">
+                <!-- Y轴（深度） -->
+                <text 
+                  v-for="i in 6" 
+                  :key="`sy-${i}`"
+                  x="50" 
+                  :y="55 + (6-i) * 40" 
+                  text-anchor="end" 
+                  class="axis-label"
+                >
+                  {{ Math.round(maxScatterDepth * (i-1) / 5) }}
+                </text>
+                
+                <!-- X轴（震级） -->
+                <text 
+                  v-for="i in 9" 
+                  :key="`sx-${i}`"
+                  :x="60 + (i-1) * 60" 
+                  y="270" 
+                  text-anchor="middle" 
+                  class="axis-label"
+                >
+                  {{ (i-1) + 1 }}
+                </text>
+                
+                <!-- 轴标题 -->
+                <text x="300" y="295" text-anchor="middle" class="axis-title">震级 (M)</text>
+                <text x="25" y="150" text-anchor="middle" class="axis-title" transform="rotate(-90, 25, 150)">深度 (km)</text>
+              </g>
+              
+              <!-- 散点 -->
+              <g class="scatter-points">
+                <circle 
+                  v-for="(point, index) in scatterData" 
+                  :key="`scatter-${index}`"
+                  :cx="60 + (point.magnitude - 1) * 60"
+                  :cy="250 - (point.depth / maxScatterDepth) * 200"
+                  :r="getScatterPointSize(point.magnitude)"
+                  :fill="getScatterPointColor(point.magnitude)"
+                  :opacity="0.7"
+                  class="scatter-point"
+                  @mouseover="showScatterTooltip($event, point)"
+                  @mouseout="hideTooltip"
+                />
+              </g>
+            </svg>
+            
+            <div class="scatter-legend">
+              <div class="legend-title">震级强度</div>
+              <div class="magnitude-scale">
+                <div v-for="i in 7" :key="i" class="scale-item">
+                  <div 
+                    class="scale-dot" 
+                    :style="{ 
+                      backgroundColor: getScatterPointColor(i + 1),
+                      width: getScatterPointSize(i + 1) * 2 + 'px',
+                      height: getScatterPointSize(i + 1) * 2 + 'px'
+                    }"
+                  ></div>
+                  <span>M{{ i + 1 }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 地震带分析 -->
+        <div class="chart-section full-width">
+          <h3 class="section-title">
+            <i class="fas fa-map"></i>
+            主要地震带分布
+          </h3>
+          <div class="seismic-belts-analysis">
+            <div class="belts-grid">
+              <div 
+                v-for="belt in seismicBelts" 
+                :key="belt.name"
+                class="belt-card"
+                @click="focusOnBelt(belt)"
+              >
+                <div class="belt-header">
+                  <h4 class="belt-name">{{ belt.name }}</h4>
+                  <div class="belt-count">{{ belt.count }}次</div>
+                </div>
+                <div class="belt-stats">
+                  <div class="belt-stat">
+                    <span class="stat-label">平均震级:</span>
+                    <span class="stat-value">M{{ belt.avgMagnitude.toFixed(1) }}</span>
+                  </div>
+                  <div class="belt-stat">
+                    <span class="stat-label">最强震级:</span>
+                    <span class="stat-value">M{{ belt.maxMagnitude.toFixed(1) }}</span>
+                  </div>
+                  <div class="belt-stat">
+                    <span class="stat-label">平均深度:</span>
+                    <span class="stat-value">{{ belt.avgDepth.toFixed(0) }}km</span>
+                  </div>
+                </div>
+                <div class="belt-activity">
+                  <div 
+                    class="activity-bar" 
+                    :style="{ width: (belt.count / maxBeltCount * 100) + '%' }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 时间分布热力图 -->
+        <div class="chart-section full-width">
+          <h3 class="section-title">
+            <i class="fas fa-calendar-alt"></i>
+            月度活动热力图
+          </h3>
+          <div class="heatmap-container">
+            <div class="heatmap-grid">
+              <div class="heatmap-months">
+                <div v-for="month in 12" :key="month" class="month-label">
+                  {{ getMonthName(month) }}
+                </div>
+              </div>
+              <div class="heatmap-years">
+                <div 
+                  v-for="year in heatmapYears" 
+                  :key="year" 
+                  class="year-row"
+                >
+                  <div class="year-label">{{ year }}</div>
+                  <div class="year-cells">
+                    <div 
+                      v-for="month in 12" 
+                      :key="`${year}-${month}`"
+                      class="heatmap-cell"
+                      :class="getHeatmapCellClass(year, month)"
+                      :title="`${year}年${month}月: ${getMonthCount(year, month)}次地震`"
+                    >
+                      <span class="cell-count">{{ getMonthCount(year, month) || '' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="heatmap-scale">
+              <span class="scale-label">活动强度:</span>
+              <div class="scale-gradient">
+                <div class="scale-item" data-level="低">低</div>
+                <div class="scale-item" data-level="中">中</div>
+                <div class="scale-item" data-level="高">高</div>
+                <div class="scale-item" data-level="极高">极高</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 悬浮提示框 -->
+      <div 
+        v-if="showTooltipData" 
+        class="tooltip" 
+        :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }"
+      >
+        {{ tooltipContent }}
       </div>
     </div>
   </div>
@@ -181,6 +501,13 @@ export default defineComponent({
   setup(props, { emit }) {
     const isRefreshing = ref(false);
     const showHeatmap = ref(false);
+    const currentView = ref('overview'); // 'overview' 或 'detailed'
+    
+    // 提示框相关
+    const showTooltipData = ref(false);
+    const tooltipX = ref(0);
+    const tooltipY = ref(0);
+    const tooltipContent = ref('');
 
     // 基础统计数据
     const totalCount = computed(() => props.earthquakeData.length);
@@ -197,6 +524,18 @@ export default defineComponent({
     const maxDepth = computed(() => {
       if (props.earthquakeData.length === 0) return 0;
       return Math.max(...props.earthquakeData.map(eq => eq.depth || 0));
+    });
+
+    const avgMagnitude = computed(() => {
+      if (props.earthquakeData.length === 0) return 0;
+      const sum = props.earthquakeData.reduce((acc, eq) => acc + (eq.magnitude || 0), 0);
+      return sum / props.earthquakeData.length;
+    });
+
+    const avgDepth = computed(() => {
+      if (props.earthquakeData.length === 0) return 0;
+      const sum = props.earthquakeData.reduce((acc, eq) => acc + (eq.depth || 0), 0);
+      return sum / props.earthquakeData.length;
     });
 
     // 震级分布
@@ -324,6 +663,252 @@ export default defineComponent({
 
       return months;
     });
+
+    // 年度趋势数据
+    const yearlyData = computed(() => {
+      const yearCounts = {};
+      
+      props.earthquakeData.forEach(eq => {
+        const date = parseEarthquakeDate(eq.date);
+        if (date && !isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          yearCounts[year] = (yearCounts[year] || 0) + 1;
+        }
+      });
+
+      return Object.keys(yearCounts)
+        .sort()
+        .map(year => ({
+          year: parseInt(year),
+          count: yearCounts[year]
+        }));
+    });
+
+    const maxYearlyCount = computed(() => {
+      return Math.max(...yearlyData.value.map(y => y.count), 1);
+    });
+
+    const avgYearlyCount = computed(() => {
+      if (yearlyData.value.length === 0) return 0;
+      return yearlyData.value.reduce((sum, y) => sum + y.count, 0) / yearlyData.value.length;
+    });
+
+    const peakYear = computed(() => {
+      return yearlyData.value.reduce((peak, current) => 
+        current.count > (peak?.count || 0) ? current : peak, null);
+    });
+
+    const yearlyTrend = computed(() => {
+      if (yearlyData.value.length < 2) return null;
+      const recent = yearlyData.value.slice(-2);
+      return ((recent[1].count - recent[0].count) / recent[0].count) * 100;
+    });
+
+    // 折线图相关
+    const lineChartWidth = computed(() => Math.max(600, yearlyData.value.length * 60 + 100));
+    const yearStepWidth = computed(() => (lineChartWidth.value - 100) / Math.max(1, yearlyData.value.length - 1));
+
+    const trendLinePoints = computed(() => {
+      return yearlyData.value.map((year, index) => {
+        const x = 60 + index * yearStepWidth.value;
+        const y = 210 - (year.count / maxYearlyCount.value) * 160;
+        return `${x},${y}`;
+      }).join(' ');
+    });
+
+    // 散点图数据
+    const scatterData = computed(() => {
+      return props.earthquakeData
+        .filter(eq => eq.magnitude && eq.depth && eq.magnitude > 0 && eq.depth > 0)
+        .map(eq => ({
+          magnitude: eq.magnitude,
+          depth: eq.depth,
+          location: eq.location || '未知',
+          date: eq.date
+        }));
+    });
+
+    const maxScatterDepth = computed(() => {
+      return Math.max(...scatterData.value.map(p => p.depth), 100);
+    });
+
+    // 环形图数据
+    const donutSegments = computed(() => {
+      const ranges = magnitudeRanges.value;
+      const total = totalCount.value;
+      const circumference = 502.4; // 2 * π * 80
+      
+      let currentOffset = 0;
+      const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#43e97b', '#38f9d7'];
+      
+      return ranges.filter(r => r.count > 0).map((range, index) => {
+        const percentage = ((range.count / total) * 100).toFixed(1);
+        const length = (range.count / total) * circumference;
+        const segment = {
+          label: range.label,
+          count: range.count,
+          percentage,
+          length,
+          offset: -currentOffset,
+          color: colors[index % colors.length]
+        };
+        currentOffset += length;
+        return segment;
+      });
+    });
+
+    // 地震带分析
+    const seismicBelts = computed(() => {
+      const belts = {
+        '环太平洋地震带': { earthquakes: [], bounds: { minLat: -60, maxLat: 70, minLng: 120, maxLng: -60 } },
+        '地中海-喜马拉雅地震带': { earthquakes: [], bounds: { minLat: 25, maxLat: 45, minLng: -10, maxLng: 140 } },
+        '大西洋中脊地震带': { earthquakes: [], bounds: { minLat: -60, maxLat: 80, minLng: -40, maxLng: -10 } },
+        '印度洋中脊地震带': { earthquakes: [], bounds: { minLat: -55, maxLat: 25, minLng: 40, maxLng: 100 } },
+        '其他地区': { earthquakes: [], bounds: null }
+      };
+
+      props.earthquakeData.forEach(eq => {
+        if (!eq.latitude || !eq.longitude) return;
+        
+        let assigned = false;
+        for (const [beltName, belt] of Object.entries(belts)) {
+          if (belt.bounds && isInBounds(eq, belt.bounds)) {
+            belt.earthquakes.push(eq);
+            assigned = true;
+            break;
+          }
+        }
+        
+        if (!assigned) {
+          belts['其他地区'].earthquakes.push(eq);
+        }
+      });
+
+      return Object.entries(belts)
+        .filter(([_, belt]) => belt.earthquakes.length > 0)
+        .map(([name, belt]) => ({
+          name,
+          count: belt.earthquakes.length,
+          avgMagnitude: belt.earthquakes.reduce((sum, eq) => sum + (eq.magnitude || 0), 0) / belt.earthquakes.length,
+          maxMagnitude: Math.max(...belt.earthquakes.map(eq => eq.magnitude || 0)),
+          avgDepth: belt.earthquakes.reduce((sum, eq) => sum + (eq.depth || 0), 0) / belt.earthquakes.length,
+          earthquakes: belt.earthquakes
+        }))
+        .sort((a, b) => b.count - a.count);
+    });
+
+    const maxBeltCount = computed(() => {
+      return Math.max(...seismicBelts.value.map(b => b.count), 1);
+    });
+
+    // 热力图数据
+    const heatmapYears = computed(() => {
+      const years = new Set();
+      props.earthquakeData.forEach(eq => {
+        const date = parseEarthquakeDate(eq.date);
+        if (date && !isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
+      });
+      return Array.from(years).sort().slice(-10); // 最近10年
+    });
+
+    const monthlyHeatmapData = computed(() => {
+      const data = {};
+      
+      props.earthquakeData.forEach(eq => {
+        const date = parseEarthquakeDate(eq.date);
+        if (date && !isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = date.getMonth() + 1;
+          const key = `${year}-${month}`;
+          data[key] = (data[key] || 0) + 1;
+        }
+      });
+      
+      return data;
+    });
+
+    // 方法
+    const toggleView = () => {
+      currentView.value = currentView.value === 'overview' ? 'detailed' : 'overview';
+    };
+
+    const isInBounds = (earthquake, bounds) => {
+      const lat = earthquake.latitude;
+      const lng = earthquake.longitude;
+      return lat >= bounds.minLat && lat <= bounds.maxLat && 
+             ((bounds.minLng < bounds.maxLng && lng >= bounds.minLng && lng <= bounds.maxLng) ||
+              (bounds.minLng > bounds.maxLng && (lng >= bounds.minLng || lng <= bounds.maxLng)));
+    };
+
+    const getYearPointColor = (count) => {
+      const ratio = count / maxYearlyCount.value;
+      if (ratio > 0.8) return '#ff4b2b';
+      if (ratio > 0.6) return '#f5576c';
+      if (ratio > 0.4) return '#4facfe';
+      if (ratio > 0.2) return '#43e97b';
+      return '#667eea';
+    };
+
+    const getScatterPointSize = (magnitude) => {
+      return Math.max(3, Math.min(12, magnitude * 1.5));
+    };
+
+    const getScatterPointColor = (magnitude) => {
+      if (magnitude >= 7) return '#ff4b2b';
+      if (magnitude >= 6) return '#f5576c';
+      if (magnitude >= 5) return '#f093fb';
+      if (magnitude >= 4) return '#4facfe';
+      if (magnitude >= 3) return '#43e97b';
+      return '#667eea';
+    };
+
+    const getMonthName = (month) => {
+      const names = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+      return names[month - 1];
+    };
+
+    const getMonthCount = (year, month) => {
+      return monthlyHeatmapData.value[`${year}-${month}`] || 0;
+    };
+
+    const getHeatmapCellClass = (year, month) => {
+      const count = getMonthCount(year, month);
+      if (count === 0) return 'heatmap-empty';
+      if (count <= 5) return 'heatmap-low';
+      if (count <= 15) return 'heatmap-medium';
+      if (count <= 30) return 'heatmap-high';
+      return 'heatmap-extreme';
+    };
+
+    const showTooltip = (event, data) => {
+      showTooltipData.value = true;
+      tooltipX.value = event.clientX + 10;
+      tooltipY.value = event.clientY - 10;
+      tooltipContent.value = `${data.year}年: ${data.count}次地震`;
+    };
+
+    const showScatterTooltip = (event, data) => {
+      showTooltipData.value = true;
+      tooltipX.value = event.clientX + 10;
+      tooltipY.value = event.clientY - 10;
+      tooltipContent.value = `M${data.magnitude.toFixed(1)}, 深度${data.depth.toFixed(1)}km\n${data.location}`;
+    };
+
+    const hideTooltip = () => {
+      showTooltipData.value = false;
+    };
+
+    const focusOnBelt = (belt) => {
+      console.log('聚焦地震带:', belt.name);
+      // 这里可以触发地图视角切换到该地震带
+    };
+
+    const showSeismicBelts = () => {
+      console.log('显示地震带分析');
+      // 可以在地图上高亮显示地震带
+    };
 
     // 处理点击遮罩层关闭
     const handleOverlayClick = () => {
@@ -454,43 +1039,51 @@ export default defineComponent({
       }
     };
 
-    // 新增：时间范围统计
-    const timeRangeStats = computed(() => {
-      if (props.earthquakeData.length === 0) return null;
-      
-      const validDates = props.earthquakeData
-        .map(eq => parseEarthquakeDate(eq.date))
-        .filter(date => date && !isNaN(date.getTime()));
-      
-      if (validDates.length === 0) return null;
-      
-      const sortedDates = validDates.sort((a, b) => a - b);
-      const earliest = sortedDates[0];
-      const latest = sortedDates[sortedDates.length - 1];
-      
-      const daysDiff = Math.ceil((latest - earliest) / (1000 * 60 * 60 * 24));
-      
-      return {
-        earliest: formatDate(earliest.toISOString()),
-        latest: formatDate(latest.toISOString()),
-        timeSpan: daysDiff,
-        validCount: validDates.length,
-        totalCount: props.earthquakeData.length
-      };
-    });
-
     return {
       isRefreshing,
       showHeatmap,
+      currentView,
+      showTooltipData,
+      tooltipX,
+      tooltipY,
+      tooltipContent,
       totalCount,
       majorEarthquakes,
       maxMagnitude,
       maxDepth,
+      avgMagnitude,
+      avgDepth,
+      yearlyTrend,
       magnitudeRanges,
       depthRanges,
       recentMajorEarthquakes,
       monthlyDistribution,
-      timeRangeStats,
+      yearlyData,
+      maxYearlyCount,
+      avgYearlyCount,
+      peakYear,
+      lineChartWidth,
+      yearStepWidth,
+      trendLinePoints,
+      scatterData,
+      maxScatterDepth,
+      donutSegments,
+      seismicBelts,
+      maxBeltCount,
+      heatmapYears,
+      monthlyHeatmapData,
+      toggleView,
+      getYearPointColor,
+      getScatterPointSize,
+      getScatterPointColor,
+      getMonthName,
+      getMonthCount,
+      getHeatmapCellClass,
+      showTooltip,
+      showScatterTooltip,
+      hideTooltip,
+      focusOnBelt,
+      showSeismicBelts,
       handleOverlayClick,
       refreshData,
       toggleHeatmap,
@@ -632,6 +1225,25 @@ export default defineComponent({
   margin-top: 4px;
 }
 
+.stat-trend {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.trend-up {
+  color: #e74c3c;
+}
+
+.trend-down {
+  color: #27ae60;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
 .action-buttons {
   display: flex;
   gap: 15px;
@@ -661,6 +1273,11 @@ export default defineComponent({
 
 .action-btn.secondary {
   background: linear-gradient(135deg, #f093fb, #f5576c);
+  color: white;
+}
+
+.action-btn.tertiary {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
   color: white;
 }
 
@@ -841,5 +1458,623 @@ export default defineComponent({
 .dashboard-content::-webkit-scrollbar-thumb:hover,
 .earthquake-list::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+.view-toggle-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.overview-content, .detailed-content {
+  padding: 20px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.stat-trend {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.trend-up {
+  color: #e74c3c;
+}
+
+.trend-down {
+  color: #27ae60;
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 15px;
+  padding: 0 20px;
+  margin-bottom: 20px;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.action-btn.primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.action-btn.secondary {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+  color: white;
+}
+
+.action-btn.tertiary {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+  color: white;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.chart-section {
+  margin: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.section-title {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.magnitude-chart, .depth-chart, .timeline-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 120px;
+  padding: 10px 0;
+}
+
+.magnitude-bar, .depth-bar, .timeline-bar {
+  flex: 1;
+  background: linear-gradient(to top, #667eea, #764ba2);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  min-height: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.magnitude-bar:hover, .depth-bar:hover, .timeline-bar:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.bar-label, .timeline-label {
+  position: absolute;
+  bottom: -25px;
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  width: 100%;
+}
+
+.bar-count, .timeline-count {
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px;
+}
+
+.recent-earthquakes {
+  margin: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.earthquake-count {
+  font-size: 14px;
+  color: #666;
+  font-weight: normal;
+}
+
+.earthquake-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.earthquake-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.earthquake-item:hover {
+  transform: translateX(5px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.earthquake-magnitude {
+  min-width: 60px;
+  height: 40px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+  margin-right: 15px;
+}
+
+.magnitude-severe {
+  background: linear-gradient(135deg, #ff416c, #ff4b2b);
+}
+
+.magnitude-major {
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+}
+
+.magnitude-moderate {
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+}
+
+.magnitude-light {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+}
+
+.magnitude-minor {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.earthquake-info {
+  flex: 1;
+  margin-right: 15px;
+}
+
+.earthquake-location {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.earthquake-details {
+  font-size: 12px;
+  color: #666;
+}
+
+.earthquake-details span {
+  margin-right: 15px;
+}
+
+.earthquake-coords {
+  text-align: right;
+  font-size: 12px;
+  color: #666;
+  min-width: 80px;
+}
+
+/* 滚动条样式 */
+.dashboard-content::-webkit-scrollbar,
+.earthquake-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dashboard-content::-webkit-scrollbar-track,
+.earthquake-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.dashboard-content::-webkit-scrollbar-thumb,
+.earthquake-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.dashboard-content::-webkit-scrollbar-thumb:hover,
+.earthquake-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.donut-chart-container {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.donut-chart svg {
+  transform: rotate(-90deg);
+}
+
+.donut-segment {
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.donut-segment:hover {
+  stroke-width: 22;
+}
+
+.donut-total {
+  font-size: 24px;
+  font-weight: bold;
+  fill: #333;
+}
+
+.donut-label {
+  font-size: 12px;
+  fill: #666;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 折线图样式 */
+.line-chart-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.line-chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.axis-label {
+  font-size: 12px;
+  fill: #666;
+}
+
+.axis-title {
+  font-size: 14px;
+  fill: #333;
+  font-weight: bold;
+}
+
+.trend-line {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.data-point {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.data-point:hover {
+  r: 7;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.chart-summary {
+  display: flex;
+  gap: 30px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.summary-value {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+/* 散点图样式 */
+.scatter-chart-container {
+  display: flex;
+  gap: 30px;
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.scatter-point {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.scatter-point:hover {
+  stroke: #333;
+  stroke-width: 2;
+}
+
+.scatter-legend {
+  min-width: 150px;
+}
+
+.legend-title {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.magnitude-scale {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scale-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.scale-dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 地震带分析样式 */
+.belts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.belt-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.belt-card:hover {
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.belt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.belt-name {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.belt-count {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.belt-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+
+.belt-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.belt-activity {
+  height: 4px;
+  background: #f0f0f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.activity-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #43e97b, #38f9d7);
+  transition: width 0.3s ease;
+}
+
+/* 热力图样式 */
+.heatmap-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.heatmap-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heatmap-months {
+  display: flex;
+  margin-left: 60px;
+}
+
+.month-label {
+  width: 30px;
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+  margin-right: 2px;
+}
+
+.year-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.year-label {
+  width: 50px;
+  font-size: 12px;
+  color: #666;
+  text-align: right;
+}
+
+.year-cells {
+  display: flex;
+  gap: 2px;
+}
+
+.heatmap-cell {
+  width: 30px;
+  height: 20px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.heatmap-empty {
+  background: #f8f9fa;
+  color: #999;
+}
+
+.heatmap-low {
+  background: #c6e48b;
+}
+
+.heatmap-medium {
+  background: #7bc96f;
+}
+
+.heatmap-high {
+  background: #239a3b;
+}
+
+.heatmap-extreme {
+  background: #196127;
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.heatmap-scale {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.scale-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.scale-gradient {
+  display: flex;
+  gap: 5px;
+}
+
+.scale-gradient .scale-item {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: white;
+}
+
+.scale-gradient .scale-item[data-level="低"] {
+  background: #c6e48b;
+}
+
+.scale-gradient .scale-item[data-level="中"] {
+  background: #7bc96f;
+}
+
+.scale-gradient .scale-item[data-level="高"] {
+  background: #239a3b;
+}
+
+.scale-gradient .scale-item[data-level="极高"] {
+  background: #196127;
+}
+
+/* 提示框样式 */
+.tooltip {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10000;
+  white-space: pre-line;
+}
+
+/* 图表图标样式 */
+.section-title i {
+  margin-right: 8px;
+  color: #667eea;
 }
 </style>
