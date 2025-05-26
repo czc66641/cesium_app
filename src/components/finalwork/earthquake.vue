@@ -589,6 +589,9 @@ export default defineComponent({
         
         dataLoaded.value = true;
         
+        // 等待下一个tick确保状态更新完成，然后创建可视化
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // 创建可视化
         await createEarthquakeVisualization();
         
@@ -1137,7 +1140,7 @@ export default defineComponent({
                 outlineWidth: 2,
                 heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
                 scaleByDistance: new Cesium.NearFarScalar(1.0e3, 1.0, 1.0e7, 0.3),
-                show: true
+                show: true  // 确保默认显示
               },
               label: {
                 text: showLabels.value ? `M${magnitude.toFixed(1)}` : '',
@@ -1164,7 +1167,8 @@ export default defineComponent({
                   </table>
                 </div>
               `,
-              earthquake: earthquake
+              earthquake: earthquake,
+              show: true  // 确保实体本身也显示
             });
             
             successCount++;
@@ -1185,20 +1189,26 @@ export default defineComponent({
         // 更新状态信息
         statusMessage.value = `已创建 ${successCount} 个地震点标记${errorCount > 0 ? ` (${errorCount} 个失败)` : ''}`;
         
-        // 如果有数据，飞到第一个地震位置
+        // 如果有数据，飞到合适的视角
         if (successCount > 0 && earthquakeData.value.length > 0) {
-          const firstEarthquake = earthquakeData.value[0];
-          if (!isNaN(firstEarthquake.longitude) && !isNaN(firstEarthquake.latitude)) {
-            setTimeout(() => {
-              props.viewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(
-                  firstEarthquake.longitude, 
-                  firstEarthquake.latitude, 
-                  500000
-                )
-              });
-            }, 1000);
-          }
+          // 计算数据的边界
+          const longitudes = earthquakeData.value.map(eq => eq.longitude);
+          const latitudes = earthquakeData.value.map(eq => eq.latitude);
+          
+          const west = Math.min(...longitudes);
+          const east = Math.max(...longitudes);
+          const south = Math.min(...latitudes);
+          const north = Math.max(...latitudes);
+          
+          // 创建边界矩形
+          const rectangle = Cesium.Rectangle.fromDegrees(west, south, east, north);
+          
+          setTimeout(() => {
+            props.viewer.camera.flyTo({
+              destination: rectangle,
+              duration: 2.0
+            });
+          }, 1000);
         }
         
       } catch (error) {
@@ -1254,6 +1264,8 @@ export default defineComponent({
       let visibleCount = 0;
       const eligibleEntities = [];
       
+      console.log('开始应用筛选条件，总实体数:', earthquakeDataSource.entities.values.length);
+      
       // 首先收集符合条件的实体
       earthquakeDataSource.entities.values.forEach(entity => {
         if (entity.earthquake) {
@@ -1272,15 +1284,16 @@ export default defineComponent({
           
           // 时间筛选
           if (isEligible && (startDate.value || endDate.value)) {
-            const earthquakeDate = new Date(earthquake.date);
-            if (!isNaN(earthquakeDate)) {
+            const earthquakeDate = parseEarthquakeDate(earthquake.date);
+            if (earthquakeDate && !isNaN(earthquakeDate)) {
               if (startDate.value && earthquakeDate < new Date(startDate.value)) {
                 isEligible = false;
               }
               if (endDate.value && earthquakeDate > new Date(endDate.value)) {
                 isEligible = false;
               }
-            } else {
+            } else if (startDate.value || endDate.value) {
+              // 如果设置了时间筛选但无法解析时间，则排除
               isEligible = false;
             }
           }
@@ -1291,6 +1304,8 @@ export default defineComponent({
         }
       });
       
+      console.log('符合筛选条件的实体数:', eligibleEntities.length);
+      
       // 按震级排序，优先显示大震级
       eligibleEntities.sort((a, b) => b.earthquake.magnitude - a.earthquake.magnitude);
       
@@ -1299,14 +1314,26 @@ export default defineComponent({
       
       // 设置所有实体的显示状态
       earthquakeDataSource.entities.values.forEach(entity => {
+        // 重要：同时设置实体和点的显示状态
         entity.show = false;
+        if (entity.point) {
+          entity.point.show = false;
+        }
       });
       
       // 显示符合条件且在限制数量内的实体
       for (let i = 0; i < Math.min(displayLimit, eligibleEntities.length); i++) {
-        eligibleEntities[i].show = showPoints.value;
-        visibleCount++;
+        const entity = eligibleEntities[i];
+        entity.show = showPoints.value;
+        if (entity.point) {
+          entity.point.show = showPoints.value;
+        }
+        if (showPoints.value) {
+          visibleCount++;
+        }
       }
+      
+      console.log('最终显示的实体数:', visibleCount);
       
       // 更新筛选后的数据引用
       filteredData.value = eligibleEntities.slice(0, Math.min(displayLimit, eligibleEntities.length))
@@ -1326,6 +1353,24 @@ export default defineComponent({
     // 切换点显示
     const togglePointsDisplay = () => {
       if (!earthquakeDataSource) return;
+      
+      console.log('切换点显示状态:', showPoints.value);
+      
+      earthquakeDataSource.entities.values.forEach(entity => {
+        if (entity.earthquake && entity.show) {  // 只操作当前应该显示的实体
+          if (entity.point) {
+            entity.point.show = showPoints.value;
+          }
+          // 如果关闭了点显示，也隐藏整个实体
+          if (!showPoints.value) {
+            entity.show = false;
+          } else {
+            entity.show = true;
+          }
+        }
+      });
+      
+      // 重新应用筛选以确保状态一致
       applyFilters();
     };
     
