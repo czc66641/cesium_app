@@ -269,7 +269,16 @@ export default defineComponent({
     const recentMajorEarthquakes = computed(() => {
       return props.earthquakeData
         .filter(eq => eq.magnitude >= 5.0)
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .map(eq => {
+          // 为每个地震添加解析后的时间用于排序
+          const parsedDate = parseEarthquakeDate(eq.date);
+          return {
+            ...eq,
+            _parsedDate: parsedDate
+          };
+        })
+        .filter(eq => eq._parsedDate) // 只保留能成功解析时间的地震
+        .sort((a, b) => b._parsedDate - a._parsedDate) // 按时间倒序排列
         .slice(0, 20);
     });
 
@@ -288,10 +297,12 @@ export default defineComponent({
       // 统计每月地震数量
       props.earthquakeData.forEach(eq => {
         if (eq.date) {
-          const date = new Date(eq.date);
-          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          if (monthCounts.hasOwnProperty(key)) {
-            monthCounts[key]++;
+          const date = parseEarthquakeDate(eq.date);
+          if (date && !isNaN(date.getTime())) {
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (monthCounts.hasOwnProperty(key)) {
+              monthCounts[key]++;
+            }
           }
         }
       });
@@ -300,7 +311,7 @@ export default defineComponent({
         const [year, month] = key.split('-');
         return {
           month: key,
-          label: `${month}`,
+          label: `${month}月`,
           count: monthCounts[key],
           height: 0
         };
@@ -346,13 +357,127 @@ export default defineComponent({
       return 'magnitude-minor';
     };
 
-    // 格式化日期
+    // 解析地震时间 - 修复版本，支持Excel序列号和字符串格式
+    const parseEarthquakeDate = (dateInput) => {
+      if (!dateInput) return null;
+      
+      try {
+        // 如果是数字（Excel序列号）
+        if (typeof dateInput === 'number') {
+          // Excel序列号转换为日期
+          // Excel以1900年1月1日为起点，但实际上1900年不是闰年，Excel有bug认为是闰年
+          // 所以需要减去2天来修正
+          const excelEpoch = new Date(1900, 0, 1); // 1900年1月1日
+          const daysSince1900 = dateInput - 2; // 修正Excel的闰年bug
+          const date = new Date(excelEpoch.getTime() + daysSince1900 * 24 * 60 * 60 * 1000);
+          
+          // 验证日期是否有效且在合理范围内
+          if (!isNaN(date.getTime()) && 
+              date.getFullYear() >= 1900 && 
+              date.getFullYear() <= 2100) {
+            return date;
+          }
+        }
+        
+        // 如果是字符串
+        if (typeof dateInput === 'string') {
+          const dateStr = dateInput.trim();
+          
+          // 处理 "2025/5/23  11:57:21" 格式（注意可能有多个空格）
+          if (dateStr.includes('/')) {
+            // 先清理多余空格，然后分割日期和时间
+            const cleanDateStr = dateStr.replace(/\s+/g, ' '); // 将多个空格替换为单个空格
+            const parts = cleanDateStr.split(' ');
+            
+            if (parts.length >= 1) {
+              const datePart = parts[0]; // 日期部分
+              const timePart = parts.length > 1 ? parts[1] : '00:00:00'; // 时间部分，如果没有则默认
+              
+              if (datePart) {
+                const dateComponents = datePart.split('/');
+                
+                // 验证年月日是否有效
+                if (dateComponents.length === 3) {
+                  const [year, month, day] = dateComponents;
+                  
+                  // 补零处理
+                  const paddedMonth = month.padStart(2, '0');
+                  const paddedDay = day.padStart(2, '0');
+                  
+                  // 构建标准ISO格式
+                  const isoDateStr = `${year}-${paddedMonth}-${paddedDay}T${timePart}`;
+                  
+                  const date = new Date(isoDateStr);
+                  
+                  // 验证日期是否有效
+                  if (!isNaN(date.getTime())) {
+                    return date;
+                  }
+                }
+              }
+            }
+          }
+          
+          // 尝试直接解析其他格式
+          const date = new Date(dateStr);
+          if (!isNaN(date.getTime())) {
+            return date;
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        console.warn('解析地震时间失败:', dateInput, error);
+        return null;
+      }
+    };
+
+    // 格式化日期 - 修复版本
     const formatDate = (dateStr) => {
       if (!dateStr) return '未知';
-      const date = new Date(dateStr);
-      if (isNaN(date)) return '未知';
-      return date.toLocaleDateString('zh-CN');
+      
+      const date = parseEarthquakeDate(dateStr);
+      if (!date) return '未知时间';
+      
+      try {
+        // 格式化为中文日期时间
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        return `${year}年${month}月${day}日 ${hours}:${minutes}`;
+      } catch (error) {
+        console.warn('格式化时间失败:', dateStr, error);
+        return '时间格式错误';
+      }
     };
+
+    // 新增：时间范围统计
+    const timeRangeStats = computed(() => {
+      if (props.earthquakeData.length === 0) return null;
+      
+      const validDates = props.earthquakeData
+        .map(eq => parseEarthquakeDate(eq.date))
+        .filter(date => date && !isNaN(date.getTime()));
+      
+      if (validDates.length === 0) return null;
+      
+      const sortedDates = validDates.sort((a, b) => a - b);
+      const earliest = sortedDates[0];
+      const latest = sortedDates[sortedDates.length - 1];
+      
+      const daysDiff = Math.ceil((latest - earliest) / (1000 * 60 * 60 * 24));
+      
+      return {
+        earliest: formatDate(earliest.toISOString()),
+        latest: formatDate(latest.toISOString()),
+        timeSpan: daysDiff,
+        validCount: validDates.length,
+        totalCount: props.earthquakeData.length
+      };
+    });
 
     return {
       isRefreshing,
@@ -365,11 +490,13 @@ export default defineComponent({
       depthRanges,
       recentMajorEarthquakes,
       monthlyDistribution,
+      timeRangeStats,
       handleOverlayClick,
       refreshData,
       toggleHeatmap,
       getMagnitudeClass,
-      formatDate
+      formatDate,
+      parseEarthquakeDate
     };
   }
 });

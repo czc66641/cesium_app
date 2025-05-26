@@ -614,15 +614,120 @@ export default defineComponent({
       }
     };
 
-    // 修复统计计算函数中的数据处理
+    // 修复时间解析函数，支持Excel序列号和字符串格式
+    const parseEarthquakeDate = (dateInput) => {
+      if (!dateInput) return null;
+      
+      try {
+        // 如果是数字（Excel序列号）
+        if (typeof dateInput === 'number') {
+          // Excel序列号转换为日期
+          // Excel以1900年1月1日为起点，但实际上1900年不是闰年，Excel有bug认为是闰年
+          // 所以需要减去2天来修正
+          const excelEpoch = new Date(1900, 0, 1); // 1900年1月1日
+          const daysSince1900 = dateInput - 2; // 修正Excel的闰年bug
+          const date = new Date(excelEpoch.getTime() + daysSince1900 * 24 * 60 * 60 * 1000);
+          
+          // 验证日期是否有效且在合理范围内
+          if (!isNaN(date.getTime()) && 
+              date.getFullYear() >= 1900 && 
+              date.getFullYear() <= 2100) {
+            return date;
+          }
+        }
+        
+        // 如果是字符串
+        if (typeof dateInput === 'string') {
+          const dateStr = dateInput.trim();
+          
+          // 处理 "2025/5/23  11:57:21" 格式（注意可能有多个空格）
+          if (dateStr.includes('/')) {
+            // 先清理多余空格，然后分割日期和时间
+            const cleanDateStr = dateStr.replace(/\s+/g, ' '); // 将多个空格替换为单个空格
+            const parts = cleanDateStr.split(' ');
+            
+            if (parts.length >= 1) {
+              const datePart = parts[0]; // 日期部分：2025/5/23
+              const timePart = parts.length > 1 ? parts[1] : '00:00:00'; // 时间部分：11:57:21
+              
+              if (datePart) {
+                const dateComponents = datePart.split('/');
+                
+                // 验证年月日是否有效
+                if (dateComponents.length === 3) {
+                  const [year, month, day] = dateComponents;
+                  
+                  // 验证年份是否合理
+                  if (year && year.length === 4 && month && day) {
+                    // 补零处理
+                    const paddedMonth = month.padStart(2, '0');
+                    const paddedDay = day.padStart(2, '0');
+                    
+                    // 构建标准ISO格式
+                    const isoDateStr = `${year}-${paddedMonth}-${paddedDay}T${timePart}`;
+                    
+                    const date = new Date(isoDateStr);
+                    
+                    // 验证日期是否有效且在合理范围内
+                    if (!isNaN(date.getTime()) && 
+                        date.getFullYear() >= 1900 && 
+                        date.getFullYear() <= 2100) {
+                      return date;
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          // 尝试直接解析其他字符串格式
+          const date = new Date(dateStr);
+          if (!isNaN(date.getTime())) {
+            return date;
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        console.warn('解析地震时间失败:', dateInput, error);
+        return null;
+      }
+    };
+
+    // 修复统计计算函数中的时间处理
     const computeEnhancedStats = (data) => {
-      if (!data || data.length === 0) return null;
+      if (!data || data.length === 0) {
+        return {
+          total: 0,
+          magnitudeStats: {},
+          depthStats: {},
+          timeSpanDays: 0,
+          avgMagnitude: 0,
+          avgDepth: 0,
+          minMagnitude: 0,
+          maxMagnitude: 0,
+          minDepth: 0,
+          maxDepth: 0
+        };
+      }
       
       // 基础统计
       const magnitudes = data.map(item => item.magnitude).filter(m => !isNaN(m));
       const depths = data.map(item => item.depth).filter(d => !isNaN(d));
-      const dates = data.map(item => parseEarthquakeDate(item.date)).filter(d => d);
       
+      // 时间统计 - 使用修复后的时间解析
+      const validDates = data
+        .map(item => parseEarthquakeDate(item.date))
+        .filter(date => date && !isNaN(date.getTime()));
+      
+      let timeSpanDays = 0;
+      if (validDates.length > 1) {
+        const sortedDates = validDates.sort((a, b) => a - b);
+        const earliest = sortedDates[0];
+        const latest = sortedDates[sortedDates.length - 1];
+        timeSpanDays = Math.ceil((latest - earliest) / (1000 * 60 * 60 * 24));
+      }
+
       // 坐标统计
       const longitudes = data.map(item => item.longitude).filter(lng => !isNaN(lng));
       const latitudes = data.map(item => item.latitude).filter(lat => !isNaN(lat));
@@ -639,10 +744,9 @@ export default defineComponent({
       const avgDepth = depths.length > 0 ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
 
       // 时间分析
-      const sortedDates = dates.sort((a, b) => a - b);
+      const sortedDates = validDates.sort((a, b) => a - b);
       const earliestDate = sortedDates[0];
       const latestDate = sortedDates[sortedDates.length - 1];
-      const timeSpanDays = dates.length > 1 ? Math.ceil((latestDate - earliestDate) / (1000 * 60 * 60 * 24)) : 0;
       
       // 震级分级统计
       const magnitudeLevels = [
@@ -682,7 +786,7 @@ export default defineComponent({
 
       // 年度统计
       const yearlyMap = new Map();
-      dates.forEach((date, index) => {
+      validDates.forEach((date, index) => {
         const year = date.getFullYear();
         if (!yearlyMap.has(year)) {
           yearlyMap.set(year, { count: 0, magnitudes: [] });
@@ -704,7 +808,7 @@ export default defineComponent({
       for (let i = 1; i <= 12; i++) {
         monthlyMap.set(i, 0);
       }
-      dates.forEach(date => {
+      validDates.forEach(date => {
         const month = date.getMonth() + 1;
         monthlyMap.set(month, monthlyMap.get(month) + 1);
       });
@@ -719,7 +823,7 @@ export default defineComponent({
       for (let i = 0; i < 24; i++) {
         hourlyMap.set(i, 0);
       }
-      dates.forEach(date => {
+      validDates.forEach(date => {
         const hour = date.getHours();
         hourlyMap.set(hour, hourlyMap.get(hour) + 1);
       });
@@ -774,7 +878,7 @@ export default defineComponent({
         maxDepth,
         avgDepth,
         timeSpanDays,
-        dateRange: dates.length > 0 ? 
+        dateRange: validDates.length > 0 ? 
           `${earliestDate?.toLocaleDateString()} - ${latestDate?.toLocaleDateString()}` : 
           '无有效日期',
         latestEarthquake: data.find(eq => parseEarthquakeDate(eq.date)?.getTime() === latestDate?.getTime()),
@@ -798,102 +902,6 @@ export default defineComponent({
         riskFactors,
         warningEarthquakes
       };
-    };
-
-    // 解析地震时间的函数
-    const parseEarthquakeDate = (dateStr) => {
-      // 首先检查输入是否为空或undefined
-      if (!dateStr && dateStr !== 0) return null;
-      
-      try {
-        // 如果是数字类型，可能是Excel日期序列号
-        if (typeof dateStr === 'number') {
-          // Excel日期序列号转换为JavaScript Date
-          // Excel起始日期是1900年1月1日，但有一个bug认为1900年是闰年
-          // 所以需要减去2天来修正
-          const excelEpoch = new Date(1900, 0, 1); // 1900年1月1日
-          const daysSinceEpoch = dateStr - 2; // 修正Excel的闰年bug
-          const jsDate = new Date(excelEpoch.getTime() + daysSinceEpoch * 24 * 60 * 60 * 1000);
-          
-          if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1900 && jsDate.getFullYear() < 2100) {
-            return jsDate;
-          }
-        }
-        
-        // 确保dateStr是字符串类型
-        const cleanDateStr = String(dateStr).trim();
-        
-        // 如果转换后仍为空，返回null
-        if (!cleanDateStr) return null;
-        
-        // 检查是否是纯数字字符串（可能是序列号）
-        const numericDate = parseFloat(cleanDateStr);
-        if (!isNaN(numericDate) && numericDate > 25000 && numericDate < 80000) {
-          // 看起来像Excel日期序列号
-          const excelEpoch = new Date(1900, 0, 1);
-          const daysSinceEpoch = numericDate - 2;
-          const jsDate = new Date(excelEpoch.getTime() + daysSinceEpoch * 24 * 60 * 60 * 1000);
-          
-          if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1900 && jsDate.getFullYear() < 2100) {
-            return jsDate;
-          }
-        }
-        
-        // 尝试多种日期格式 - 针对你的格式 "2025-5-23 11:57:21"
-        const formats = [
-          // 标准格式: "2025-5-23 11:57:21"
-          /^(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-          // 只有日期: "2025-5-23"
-          /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-          // ISO格式: "2025-05-23T11:57:21"
-          /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/,
-          // 斜杠格式: "2025/5/23 11:57:21"
-          /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/,
-          // 斜杠日期格式: "2025/5/23"
-          /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
-          // 中文格式: "2025年5月23日"
-          /^(\d{4})年(\d{1,2})月(\d{1,2})日/
-        ];
-
-        for (const format of formats) {
-          const match = cleanDateStr.match(format);
-          if (match) {
-            const [, year, month, day, hour = 0, minute = 0, second = 0] = match;
-            
-            // 创建Date对象，注意月份需要减1
-            const date = new Date(
-              parseInt(year),
-              parseInt(month) - 1, // JavaScript月份从0开始
-              parseInt(day),
-              parseInt(hour),
-              parseInt(minute),
-              parseInt(second)
-            );
-            
-            // 验证创建的日期是否有效且在合理范围内
-            if (!isNaN(date.getTime()) && 
-                date.getFullYear() > 1900 && 
-                date.getFullYear() < 2100) {
-              return date;
-            }
-          }
-        }
-
-        // 如果正则匹配都失败，尝试直接解析
-        const directParsed = new Date(cleanDateStr);
-        if (!isNaN(directParsed.getTime()) && 
-            directParsed.getFullYear() > 1900 && 
-            directParsed.getFullYear() < 2100) {
-          return directParsed;
-        }
-
-        console.warn('无法解析日期格式:', cleanDateStr, '原始值:', dateStr);
-        return null;
-        
-      } catch (error) {
-        console.error('解析日期时出错:', error, 'dateStr:', dateStr);
-        return null;
-      }
     };
 
     // 从位置字符串提取地区信息
@@ -2070,7 +2078,7 @@ export default defineComponent({
 }
 
 .factor-value {
-  width: 30px;
+  width:  30px;
   text-align: right;
   font-weight: bold;
 }
