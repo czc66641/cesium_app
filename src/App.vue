@@ -342,7 +342,7 @@ export default defineComponent({
       showAnalysisPanel.value = true;
     };
 
-    // 定位到指定地震
+    // 定位到指定地震 - 移动到地震工具类
     const locateEarthquake = (earthquake) => {
       if (!viewer.value) return;
       
@@ -391,130 +391,61 @@ export default defineComponent({
       }, 3000);
     };
 
-    // 生成地震热力图
-    const generateEarthquakeHeatmap = (data) => {
+    // 生成地震热力图 - 使用核密度分析工具类
+    const generateEarthquakeHeatmap = async (data) => {
       if (!viewer.value || !data.length) return;
       
-      console.log('开始生成地震热力图，数据量:', data.length);
+      console.log('开始生成地震核密度分析热力图，数据量:', data.length);
       
-      // 清除现有热力图
-      clearEarthquakeHeatmap();
-      
-      // 创建热力图数据源
-      heatmapDataSource = new Cesium.CustomDataSource('earthquakeHeatmap');
-      viewer.value.dataSources.add(heatmapDataSource);
-      
-      // 为了更好的视觉效果，按震级分层显示
-      const layers = [
-        { minMag: 7.0, maxMag: 10.0, color: Cesium.Color.DARKRED, radius: 80000, alpha: 0.7 },
-        { minMag: 6.0, maxMag: 7.0, color: Cesium.Color.RED, radius: 60000, alpha: 0.6 },
-        { minMag: 5.0, maxMag: 6.0, color: Cesium.Color.ORANGE, radius: 40000, alpha: 0.5 },
-        { minMag: 4.0, maxMag: 5.0, color: Cesium.Color.YELLOW, radius: 25000, alpha: 0.4 },
-        { minMag: 0.0, maxMag: 4.0, color: Cesium.Color.GREEN, radius: 15000, alpha: 0.3 }
-      ];
-      
-      let heatmapCount = 0;
-      
-      // 为每个地震事件创建热力图点
-      data.forEach((earthquake, index) => {
-        if (!earthquake.longitude || !earthquake.latitude || !earthquake.magnitude) {
-          console.warn('地震数据不完整，跳过:', earthquake);
-          return;
-        }
+      try {
+        // 动态导入核密度分析工具
+        const { EarthquakeKernelDensityAnalysis } = await import('./utils/earthquakeKernelDensity.js');
         
-        // 确保坐标有效
-        const lng = parseFloat(earthquake.longitude);
-        const lat = parseFloat(earthquake.latitude);
-        const mag = parseFloat(earthquake.magnitude);
+        // 创建核密度分析实例
+        const kernelDensityAnalysis = new EarthquakeKernelDensityAnalysis(viewer.value);
         
-        if (isNaN(lng) || isNaN(lat) || isNaN(mag)) {
-          console.warn('地震坐标或震级无效，跳过:', earthquake);
-          return;
-        }
+        // 生成核密度热力图
+        await kernelDensityAnalysis.generateKernelDensityHeatmap(data);
         
-        // 检查坐标范围
-        if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
-          console.warn('地震坐标超出有效范围，跳过:', earthquake);
-          return;
-        }
+        // 保存实例引用以便清除
+        heatmapDataSource = kernelDensityAnalysis;
         
-        // 根据震级确定层级
-        const layer = layers.find(l => mag >= l.minMag && mag < l.maxMag) || layers[layers.length - 1];
-        
-        try {
-          const position = Cesium.Cartesian3.fromDegrees(lng, lat, 0);
-          
-          // 创建热力图圆圈 - 修复高度相关警告
-          const heatmapEntity = heatmapDataSource.entities.add({
-            id: `heatmap_${index}_${Date.now()}`,
-            position: position,
-            ellipse: {
-              semiMajorAxis: layer.radius,
-              semiMinorAxis: layer.radius,
-              material: layer.color.withAlpha(layer.alpha),
-              outline: false,
-              height: 0, // 明确设置高度为0，避免警告
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-            },
-            properties: {
-              magnitude: mag,
-              location: earthquake.location || '未知位置',
-              date: earthquake.date || '未知时间'
-            }
-          });
-          
-          heatmapCount++;
-          
-          // 为重要地震添加标记点
-          if (mag >= 6.0) {
-            heatmapDataSource.entities.add({
-              id: `heatmap_marker_${index}_${Date.now()}`,
-              position: position,
-              point: {
-                pixelSize: Math.min(15, mag * 2),
-                color: Cesium.Color.WHITE,
-                outlineColor: layer.color,
-                outlineWidth: 3,
-                height: 0, // 明确设置高度
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-                disableDepthTestDistance: Number.POSITIVE_INFINITY
-              },
-              label: {
-                text: `M${mag.toFixed(1)}`,
-                font: '12px sans-serif',
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 2,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                pixelOffset: new Cesium.Cartesian2(0, -8),
-                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-              }
-            });
-          }
-        } catch (error) {
-          console.error('创建热力图点失败:', error, earthquake);
-        }
-      });
-      
-      console.log(`地震热力图生成完成! 成功创建 ${heatmapCount} 个热力图点`);
-      
-      if (heatmapCount === 0) {
-        console.warn('没有创建任何热力图点，请检查数据格式');
+        console.log('地震核密度分析热力图生成完成');
+      } catch (error) {
+        console.error('生成地震核密度热力图失败:', error);
+        // 降级到简单热力图
+        await generateSimpleHeatmap(data);
       }
-      
-      // 飞行到显示所有热力图的最佳视角
-      if (heatmapCount > 0) {
-        setTimeout(() => {
-          try {
-            viewer.value.flyTo(heatmapDataSource, {
-              duration: 2.0,
-              offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 0)
-            });
-          } catch (flyError) {
-            console.warn('飞行到热力图失败:', flyError);
+    };
+
+    // 简单热力图作为备选方案
+    const generateSimpleHeatmap = async (data) => {
+      try {
+        const { CesiumHeatmap } = await import('./utils/cesiumHeatmap.js');
+        
+        const heatmap = new CesiumHeatmap(viewer.value, {
+          radius: 60,
+          maxOpacity: 0.8,
+          gradient: {
+            0.25: "rgb(0,0,255)",
+            0.55: "rgb(0,255,0)",
+            0.85: "rgb(255,255,0)",
+            1.0: "rgb(255,0,0)"
           }
-        }, 500);
+        });
+        
+        const heatmapPoints = data.map(eq => ({
+          x: eq.longitude,
+          y: eq.latitude,
+          value: eq.magnitude / 10
+        }));
+        
+        heatmap.setData(heatmapPoints);
+        heatmapDataSource = heatmap;
+        
+        console.log('简单热力图生成完成');
+      } catch (error) {
+        console.error('生成简单热力图也失败:', error);
       }
     };
 
@@ -523,7 +454,11 @@ export default defineComponent({
       if (!viewer.value) return;
       
       if (heatmapDataSource) {
-        viewer.value.dataSources.remove(heatmapDataSource);
+        if (typeof heatmapDataSource.remove === 'function') {
+          heatmapDataSource.remove();
+        } else if (typeof heatmapDataSource.clear === 'function') {
+          heatmapDataSource.clear();
+        }
         heatmapDataSource = null;
       }
       

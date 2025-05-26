@@ -313,4 +313,54 @@ export class CesiumHeatmap {
   }
 }
 
+/**
+ * 核密度估计热力图生成器 - 作为EarthquakeKernelDensityAnalysis的简化版本
+ */
+export class KernelDensityHeatmap extends CesiumHeatmap {
+  constructor(viewer, options = {}) {
+    super(viewer, {
+      // 核密度分析专用配置
+      kernelType: 'gaussian',
+      bandwidth: 'auto',
+      gridResolution: 80,
+      weightField: null,
+      useMagnitudeWeight: true,
+      ...options
+    });
+  }
+
+  /**
+   * 生成核密度估计热力图
+   * @param {Array} earthquakes 地震数据
+   */
+  generateKernelDensityHeatmap(earthquakes) {
+    if (!earthquakes || earthquakes.length === 0) {
+      console.warn('地震数据为空');
+      return;
+    }
+
+    console.log('开始生成简化版核密度分析热力图，数据量:', earthquakes.length);
+
+    // 预处理数据
+    const validEarthquakes = earthquakes.filter(eq => {
+      const lng = parseFloat(eq.longitude);
+      const lat = parseFloat(eq.latitude);
+      const mag = parseFloat(eq.magnitude);
+      
+      return !isNaN(lng) && !isNaN(lat) && !isNaN(mag) &&
+             lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+    }).map(eq => ({
+      x: parseFloat(eq.longitude),
+      y: parseFloat(eq.latitude),
+      value: this.options.useMagnitudeWeight ? 
+        Math.pow(parseFloat(eq.magnitude), 1.5) / 10 : 1
+    }));
+
+    // 使用父类的setData方法
+    this.setData(validEarthquakes);
+    
+    console.log('简化版核密度分析热力图生成完成');
+  }
+}
+
 export default CesiumHeatmap;
